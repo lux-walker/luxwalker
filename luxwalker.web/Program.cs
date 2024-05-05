@@ -17,12 +17,10 @@ var app = builder.Build();
 
 app.Services.UseScheduler(scheduler =>
 {
-    if (app.Environment.IsDevelopment())
-    {
-        scheduler.Schedule<KeepAliveBackgroundTask>()
-                 .Cron("*/13 * * * *")
-                 .RunOnceAtStart();
-    }
+
+    scheduler.Schedule<KeepAliveBackgroundTask>()
+             .Cron("*/5 * * * *")
+             .RunOnceAtStart();
 
     scheduler.Schedule<VisitSearchBackgroundTask>()
                  .EveryFiveMinutes()
