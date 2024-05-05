@@ -24,14 +24,14 @@ public class VisitSearchBackgroundTask : IInvocable
         await ProcessRequests(requests);
     }
 
-    private async Task ProcessRequests(IReadOnlyCollection<LuxwalkerRequest> requests)
+    private Task ProcessRequests(IReadOnlyCollection<LuxwalkerRequest> requests)
     => _emailSender.SendAsync(async sendEmail =>
     {
         var tasks = requests.Select(x => ProcessRequest(x, sendEmail)).ToList();
         await Task.WhenAll(tasks);
     });
 
-    private async Task ProcessRequest(LuxwalkerRequest request, Func<string, Task> sendEmail)
+    private async Task ProcessRequest(LuxwalkerRequest request, Func<LuxwalkerRequest, Task> sendEmail)
     {
         var luxmed = await LuxmedClient.LoginAsync(request.Login, request.Password);
         var variant = await luxmed.FindVariantAsync(request.Service);
@@ -48,7 +48,7 @@ public class VisitSearchBackgroundTask : IInvocable
             return;
         }
 
-        await sendEmail(request.NotificationEmail);
+        await sendEmail(request);
         Exchange.Requests.Remove(request);
     }
 }
