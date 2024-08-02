@@ -1,6 +1,11 @@
 using System.Net.Http.Headers;
 using System.Text;
 
+class LoginContent
+{
+    public string Token { get; set; }
+}
+
 public record Cookie(string Name, string Value)
 {
     public override string ToString() => $"{Name}={Value};";
@@ -53,24 +58,23 @@ public class LuxmedClient
 
     public async Task<ServiceVariant?> FindVariantAsync(string examination)
     {
+        var lExamination = examination.ToLower();
         var url = "PatientPortal/NewPortal/Dictionary/serviceVariantsGroups";
         var request = _prepareRequest(HttpMethod.Get, url);
         var response = await _client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var responseModel = await response.Content.ReadFromJsonAsync<ServiceVariantGroup[]>();
-        return responseModel?.SelectMany(x => x.Children)?.FirstOrDefault(x => x.Name == examination);
+        return responseModel?.SelectMany(x => x.Children)?.FirstOrDefault(x => x.Name.ToLower() == lExamination);
     }
 
-    public async Task<TermForDay[]> SearchForVisitsAsync(ServiceVariant variant, int? doctorId)
+    private async Task<TermForDay[]> SearchForVisitsAsync(
+        ServiceVariant variant, DateTime from, DateTime to, int? doctorId)
     {
-        DateOnly from = DateOnly.FromDateTime(DateTime.Now);
-        DateOnly to = from.AddDays(14);
-
         var queryString = new QueryString();
 
         if (doctorId.HasValue)
         {
-            queryString.Add("doctorsIds", doctorId.Value.ToString());
+            queryString = queryString.Add("doctorsIds", doctorId.Value.ToString());
         }
 
         var query = queryString
@@ -92,6 +96,14 @@ public class LuxmedClient
         return responseModel?.TermsForService?.TermsForDays ?? [];
     }
 
+    public async Task<TermForDay[]> SearchForVisitsAsync(ServiceVariant variant, int? doctorId)
+    {
+        var firstResult = await SearchForVisitsAsync(variant, DateTime.Now, DateTime.Now.AddDays(14), doctorId);
+        return firstResult.Length == 0
+            ? await SearchForVisitsAsync(variant, DateTime.Now.AddDays(14), DateTime.Now.AddDays(28), doctorId)
+            : firstResult;
+    }
+
     public static async Task<LuxmedClient> LoginAsync(string login, string password)
     {
         var url = "PatientPortal/Account/LogIn";
@@ -105,6 +117,7 @@ public class LuxmedClient
         response.EnsureSuccessStatusCode();
 
         var cookiesStringCollection = response.Headers.GetValues("Set-Cookie");
+        var content = await response.Content.ReadFromJsonAsync<LoginContent>();
         if (cookiesStringCollection is null)
         {
             throw new Exception("No cookies in response");
@@ -119,14 +132,12 @@ public class LuxmedClient
         var session = cookies.FirstOrDefault(x => x.Name == "ASP.NET_SessionId")
             ?? throw new Exception("No ASP.NET_SessionId cookie in response");
 
-        var authorization = cookies.FirstOrDefault(x => x.Name == "Authorization")
-            ?? throw new Exception("No Authorization cookie in response");
-
         PrepareRequest prepareRequest = (HttpMethod method, string url) =>
         {
             var request = new HttpRequestMessage(method, url);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Headers.Add("Cookie", Cookie.Combine(session, authorization));
+            request.Headers.Add("Cookie", cookiesStringCollection);
+            request.Headers.Add("Authorization", $"Bearer {content.Token}");
             return request;
         };
 
