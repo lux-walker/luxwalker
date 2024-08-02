@@ -93,7 +93,16 @@ public class LuxmedClient
         var response = await _client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var responseModel = await response.Content.ReadFromJsonAsync<SearchVisitRoot>();
-        return responseModel?.TermsForService?.TermsForDays ?? [];
+        var result = responseModel?.TermsForService?.TermsForDays ?? [];
+        if (doctorId.HasValue)
+        {
+            result = result
+                     .Where(x =>
+                         x.Terms.Any(y => y.Doctor.Id == doctorId))
+                     .ToArray();
+        }
+
+        return result;
     }
 
     public async Task<TermForDay[]> SearchForVisitsAsync(ServiceVariant variant, int? doctorId)
