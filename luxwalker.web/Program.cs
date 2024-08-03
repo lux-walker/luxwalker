@@ -10,7 +10,8 @@ builder.Services.AddSingleton<VisitSearchBackgroundTask>();
 
 string login = builder.Configuration.GetValue<string>("GMAIL_USERNAME")!;
 string password = builder.Configuration.GetValue<string>("GMAIL_PASSWORD")!;
-builder.Services.AddSingleton(new EmailSender(login, password));
+string emailExceptionNotification = builder.Configuration.GetValue<string>("ERROR_NOTIFICATION_EMAIL")!;
+builder.Services.AddSingleton(new EmailSenderFactory(login, password, emailExceptionNotification));
 
 var app = builder.Build();
 
@@ -23,7 +24,7 @@ app.Services.UseScheduler(scheduler =>
              .RunOnceAtStart();
 
     scheduler.Schedule<VisitSearchBackgroundTask>()
-                 .EveryFiveMinutes()
+                 .EveryThirtyMinutes()
                  .RunOnceAtStart();
 
 

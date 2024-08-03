@@ -42,11 +42,14 @@ public static class Endpoints
                         return Results.NotFound($"Service {request.Service} not found");
                   }
 
-                  var days = await luxmed.SearchForVisitsAsync(variant, doctor?.Id);
-                  // if (days.Length > 0)
-                  // {
-                  //       return Results.Ok("There are available visits");
-                  // }
+                  try
+                  {
+                        var days = await luxmed.SearchForVisitsAsync(variant, doctor?.Id);
+                  }
+                  catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                  {
+                        Console.WriteLine("To many requests, but accepting");
+                  }
 
                   var model = LuxwalkerRequest.Create(request, doctor);
 

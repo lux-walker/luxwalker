@@ -1,29 +1,57 @@
+using System.Net;
+using MailKit.Net.Smtp;
 using MimeKit;
 
-public class EmailSender
+public class EmailSenderFactory
 {
     private readonly string _login;
     private readonly string _password;
+    private readonly string _emailExceptionNotification;
 
-    public EmailSender(string login, string password)
+    public EmailSenderFactory(string login, string password, string emailExceptionNotification)
     {
         _login = login ?? throw new ArgumentNullException(nameof(login));
         _password = password ?? throw new ArgumentNullException(nameof(password));
+        _emailExceptionNotification = emailExceptionNotification;
     }
 
 
-    public async Task SendAsync(Func<Func<LuxwalkerRequest, Task>, Task> sendAction)
+    public async Task Authenticate(Func<EmailSender, Task> sendAction)
     {
-        using var client = new MailKit.Net.Smtp.SmtpClient();
+        using var client = new SmtpClient();
         await client.ConnectAsync("smtp.gmail.com", 587, false);
         await client.AuthenticateAsync(_login, _password);
-        Func<LuxwalkerRequest, Task> sender = async request =>
+        await sendAction(new EmailSender(client, _emailExceptionNotification));
+    }
+
+    public class EmailSender(SmtpClient authenticatedClient, string emailExceptionNotification)
+    {
+        private readonly SmtpClient _authenticatedClient = authenticatedClient;
+
+        public async Task SendErrorAsync(Exception exception)
+        {
+            var email = new MimeMessage();
+
+            email.From.Add(new MailboxAddress("Luxwalker", "luxmedwalker@gmail.com"));
+            email.To.Add(new MailboxAddress("", emailExceptionNotification ?? "luxmedwalker@gmail.com"));
+
+            var (subject, bodyText) = GetErrorText(exception);
+            email.Subject = subject;
+
+            email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
+            {
+                Text = bodyText
+            };
+
+            await _authenticatedClient.SendAsync(email);
+        }
+
+        public async Task SendMessageAsync(LuxwalkerRequest request)
         {
             var email = new MimeMessage();
 
             email.From.Add(new MailboxAddress("Luxwalker", "luxmedwalker@gmail.com"));
             email.To.Add(new MailboxAddress("", request.NotificationEmail));
-
             email.Subject = $"Nowe terminy {request.Service} w Luxmedzie!";
 
             var text = $"<b>Pojawiły się nowe terminy {request.Service} w Luxmedzie!</b>";
@@ -37,9 +65,13 @@ public class EmailSender
                 Text = text
             };
 
-            await client.SendAsync(email);
-        };
+            await _authenticatedClient.SendAsync(email);
+        }
 
-        await sendAction(sender);
+        private (string subject, string bodyText) GetErrorText(Exception exception) => exception switch
+        {
+            HttpRequestException ex when ex.StatusCode == HttpStatusCode.TooManyRequests => ("Too many requests", "Too many requests"),
+            _ => ("Unhandled Exception", exception.Message)
+        };
     }
 }
