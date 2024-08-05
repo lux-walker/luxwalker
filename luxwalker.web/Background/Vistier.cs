@@ -37,6 +37,11 @@ public class Visiter
         }
     }
 
+    public static LuxwalkerRequest[] GetVisits()
+    {
+        return _visits.Values.Select(x => x.request).ToArray();
+    }
+
     public static void Delete(Guid requestId)
     {
         if (_visits.TryGetValue(requestId, out VisitActionInfo visitInfo))
