@@ -69,10 +69,18 @@ public static class Endpoints
                   if (request is not null)
                   {
                         Exchange.Requests.Remove(request);
+                        Visiter.Delete(id);
                         return Results.Ok();
                   }
 
                   return Results.NotFound();
             });
+
+            app.MapDelete("api/walker/process/{id}/restart", (Guid id) =>
+            {
+                  Visiter.Restart(id);
+                  return Results.Ok();
+            });
+
       }
 }

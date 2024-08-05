@@ -24,8 +24,8 @@ app.Services.UseScheduler(scheduler =>
              .RunOnceAtStart();
 
     scheduler.Schedule<VisitSearchBackgroundTask>()
-                 .EveryThirtyMinutes()
-                 .RunOnceAtStart();
+             .EveryThirtyMinutes()
+             .RunOnceAtStart();
 
 
 });

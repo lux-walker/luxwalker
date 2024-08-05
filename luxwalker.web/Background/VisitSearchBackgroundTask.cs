@@ -12,8 +12,6 @@ public class VisitSearchBackgroundTask : IInvocable
 {
     private readonly ILogger _logger;
     private readonly EmailSenderFactory _emailSender;
-    private readonly Dictionary<Guid, TimeSpan> _toManyRequestsDictionary = new();
-    private DateTime? _processingTime;
 
     public VisitSearchBackgroundTask(ILogger<VisitSearchBackgroundTask> logger, EmailSenderFactory emailSender)
     {
@@ -21,76 +19,28 @@ public class VisitSearchBackgroundTask : IInvocable
         _emailSender = emailSender;
     }
 
-    public async Task Invoke()
+    public Task Invoke()
     {
         IReadOnlyCollection<LuxwalkerRequest> requests = Exchange.Requests.AsReadOnly();
         if (requests.Count == 0)
         {
             _logger.LogInformation("No requests to process");
-            return;
+            return Task.CompletedTask;
         }
 
-        if (_processingTime is not null)
-        {
-            var delay = DateTime.Now - _processingTime.Value;
-            _logger.LogWarning($"Processing previous request since: {delay}");
-            return;
-        }
-
-        _processingTime = DateTime.Now;
-
-        try
-        {
-            _logger.LogInformation($"Processing {requests.Count} requests");
-            await ProcessRequestsAsync(requests);
-        }
-        finally
-        {
-            _processingTime = null;
-        }
+        _logger.LogInformation($"Processing {requests.Count} requests");
+        ProcessRequestsAsync(requests);
+        return Task.CompletedTask;
     }
 
-    private Task ProcessRequestsAsync(IReadOnlyCollection<LuxwalkerRequest> requests)
-    => _emailSender.Authenticate(async sendEmail =>
+    private void ProcessRequestsAsync(IReadOnlyCollection<LuxwalkerRequest> requests)
     {
-        var tasks = requests.Select(x => ProcessRequestAsync(x, sendEmail)).ToList();
-        await Task.WhenAll(tasks);
-    });
-
-    private async Task ProcessRequestAsync(LuxwalkerRequest request, EmailSender emailSender)
-    {
-        _toManyRequestsDictionary.TryGetValue(request.Id, out var delay);
-        if (delay > TimeSpan.Zero)
+        foreach (var request in requests)
         {
-            _logger.LogWarning($"Too many requests for {request.Login}. Waiting {delay}");
-            await Task.Delay(delay);
-        }
-
-        try
-        {
-            var result = await FindVisitsAndSendEMail(request, emailSender);
-            if (result == Result.NoResult)
+            Visiter.Visit(request, async token => await _emailSender.Authenticate(async sendEmail =>
             {
-                return;
-            }
-
-            _toManyRequestsDictionary.Remove(request.Id);
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
-        {
-            var newDelay = delay == TimeSpan.Zero ? TimeSpan.FromMinutes(1) : delay * 2;
-            _toManyRequestsDictionary[request.Id] = newDelay;
-            _logger.LogWarning($"Too many requests for {request.Login}. Next Waiting {delay}");
-
-            if (newDelay > TimeSpan.FromDays(1))
-            {
-                await emailSender.SendErrorAsync(ex);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Error processing request {request.Id}");
-            await emailSender.SendErrorAsync(ex);
+                await FindVisitsAndSendEMail(request, sendEmail);
+            }));
         }
     }
 
