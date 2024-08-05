@@ -1,13 +1,22 @@
 
 using System.Net;
+using System.Text.Json.Serialization;
 
-public record VisitActionInfo(
-    LuxwalkerRequest request,
-    DateTime Start,
-    TimeSpan Delay,
-    Func<VisitActionInfo, Task> Action,
-    Func<CancellationToken, Task> OriginAction,
-    CancellationTokenSource CancellationTokenSource);
+public record VisitActionInfo
+{
+    public LuxwalkerRequest Request { get; init; }
+    public DateTime Start { get; init; }
+    public TimeSpan Delay { get; init; }
+
+    [JsonIgnore]
+    public Func<VisitActionInfo, Task> Action { get; init; }
+
+    [JsonIgnore]
+    public Func<CancellationToken, Task> OriginAction { get; init; }
+
+    [JsonIgnore]
+    public CancellationTokenSource CancellationTokenSource { get; init; }
+}
 
 public class Visiter
 {
@@ -17,23 +26,23 @@ public class Visiter
     {
         try
         {
-            Console.WriteLine($"Visiting {info.request.Service}. Start at {info.Start}. Processing time ${DateTime.Now - info.Start}. Delay {info.Delay}");
+            Console.WriteLine($"Visiting {info.Request.Service}. Start at {info.Start}. Processing time ${DateTime.Now - info.Start}. Delay {info.Delay}");
             await Task.Delay(info.Delay, info.CancellationTokenSource.Token);
             await info.OriginAction(info.CancellationTokenSource.Token);
-            _visits.Remove(info.request.Id);
+            _visits.Remove(info.Request.Id);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            Console.WriteLine($"Too many requests for {info.request.Service}. Delaying for {info.Delay}");
+            Console.WriteLine($"Too many requests for {info.Request.Service}. Delaying for {info.Delay}");
             var newDelay = info.Delay == TimeSpan.Zero ? TimeSpan.FromDays(1) : info.Delay * 2;
-            _visits[info.request.Id] = info with { Delay = newDelay };
+            _visits[info.Request.Id] = info with { Delay = newDelay };
             await info.Action(info);
         }
         catch (Exception e)
         {
-            Console.WriteLine($"Error while processing {info.request.Service} {e.Message}");
-            Console.WriteLine($"Error while processing {info.request.Service}");
-            _visits.Remove(info.request.Id);
+            Console.WriteLine($"Error while processing {info.Request.Service} {e.Message}");
+            Console.WriteLine($"Error while processing {info.Request.Service}");
+            _visits.Remove(info.Request.Id);
         }
     }
 
@@ -55,7 +64,7 @@ public class Visiter
         if (_visits.TryGetValue(requestId, out VisitActionInfo visitInfo))
         {
             visitInfo.CancellationTokenSource.Cancel();
-            Visit(visitInfo.request, visitInfo.OriginAction);
+            Visit(visitInfo.Request, visitInfo.OriginAction);
         }
     }
 
@@ -66,7 +75,16 @@ public class Visiter
             return;
         }
 
-        var visit = new VisitActionInfo(request, DateTime.Now, TimeSpan.Zero, InternalCall, visitAction, new());
+        var visit = new VisitActionInfo
+        {
+            Request = request,
+            Start = DateTime.Now,
+            Delay = TimeSpan.Zero,
+            Action = InternalCall,
+            OriginAction = visitAction,
+            CancellationTokenSource = new()
+        };
+
         _visits[request.Id] = visit;
         visit.Action(visit);
     }
