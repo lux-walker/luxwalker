@@ -82,7 +82,7 @@ public static class Endpoints
                   return Results.Ok();
             });
 
-            app.MapGet("api/walker/process", () => Visiter.GetVisits())
+            app.MapGet("api/walker/process", Visiter.GetVisits)
                .WithDescription("Return all active visits")
                .WithOpenApi();
       }
