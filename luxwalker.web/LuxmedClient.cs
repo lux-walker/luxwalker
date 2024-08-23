@@ -28,7 +28,13 @@ public class LuxmedClient
 
     static LuxmedClient()
     {
-        var handler = new HttpClientHandler { UseCookies = false };
+        var handler = new HttpClientHandler
+        {
+
+            AllowAutoRedirect = false,
+            UseCookies = false
+        };
+
         var client = new HttpClient(handler)
         {
             BaseAddress = new Uri("https://portalpacjenta.luxmed.pl", UriKind.RelativeOrAbsolute)
@@ -146,6 +152,7 @@ public class LuxmedClient
             var request = new HttpRequestMessage(method, url);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             request.Headers.Add("Cookie", cookiesStringCollection);
+            request.Headers.Add("authorization-token", $"Bearer {content.Token}");
             request.Headers.Add("Authorization", $"Bearer {content.Token}");
             return request;
         };
