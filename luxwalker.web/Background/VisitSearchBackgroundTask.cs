@@ -21,7 +21,7 @@ public class VisitSearchBackgroundTask : IInvocable
 
     public Task Invoke()
     {
-        IReadOnlyCollection<LuxwalkerRequest> requests = Exchange.Requests.AsReadOnly();
+        IReadOnlyCollection<LuxwalkerRequest> requests = Exchange.Requests;
         if (requests.Count == 0)
         {
             _logger.LogInformation("No requests to process");
@@ -62,7 +62,7 @@ public class VisitSearchBackgroundTask : IInvocable
         }
 
         await emailSender.SendMessageAsync(request);
-        Exchange.Requests.Remove(request);
+        Exchange.Hibernate(request);
         return Result.Sent;
     }
 }

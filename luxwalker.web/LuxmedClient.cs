@@ -1,5 +1,34 @@
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+
+public record LockTerm(
+        int ServiceVariantId,
+        string ServiceVariantName,
+        int RoomId,
+        int ScheduleId,
+        DateTime Date,
+        TimeOnly TimeFrom,
+        TimeOnly TimeTo,
+        int DoctorId,
+        Doctor Doctor
+    );
+
+
+public record Book(
+    Valuation Valuation,
+    int ServiceVariantId,
+    int RoomId,
+    int TemporaryReservationId,
+    DateTime Date,
+    TimeOnly TimeFrom,
+    int ScheduleId,
+    int? ReferralId = null,
+    int? EReferralId = null,
+    int? ParentReservationId = null,
+    bool? ReferralRequired = false,
+    int? ValuationId = null
+);
 
 class LoginContent
 {
@@ -60,6 +89,60 @@ public class LuxmedClient
         return responseModel?.Doctors?
             .FirstOrDefault(x => x.FirstName.ToLower() == firstName &&
                                  x.LastName.ToLower() == lastName);
+    }
+
+    public async Task Book(LockTermResult lockTerm, Term term, ServiceVariant variant)
+    {
+        Book book = new(
+            lockTerm.Value.Valuations.First(),
+            variant.Id,
+            term.RoomId,
+            lockTerm.Value.TemporaryReservationId,
+            term.DateTimeFrom.Date,
+            TimeOnly.FromDateTime(term.DateTimeFrom),
+            term.ScheduleId
+        );
+
+        var url = "PatientPortal/NewPortal/reservation/confirm";
+        var request = _prepareRequest(HttpMethod.Post, url);
+        var json = JsonSerializer.Serialize(book, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await _client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var message = await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<LockTermResult> LockTermAsync(Term term, ServiceVariant variant)
+    {
+        var lockTerm = new LockTerm(
+            variant.Id,
+            variant.Name,
+            term.RoomId,
+            term.ScheduleId,
+            term.DateTimeFrom.Date,
+            TimeOnly.FromDateTime(term.DateTimeFrom),
+            TimeOnly.FromDateTime(term.DateTimeTo),
+            term.Doctor.Id,
+            term.Doctor
+        );
+
+        var url = "PatientPortal/NewPortal/reservation/lockterm";
+        var request = _prepareRequest(HttpMethod.Post, url);
+        var json = JsonSerializer.Serialize(lockTerm, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<LockTermResult>();
+        return result;
     }
 
     public async Task<ServiceVariant?> FindVariantAsync(string examination)
@@ -142,7 +225,6 @@ public class LuxmedClient
         {
             throw new Exception("No cookies in response");
         }
-
         var cookies = Cookie.ParseAsCookie(cookiesStringCollection);
         var session = cookies.FirstOrDefault(x => x.Name == "ASP.NET_SessionId")
             ?? throw new Exception("No ASP.NET_SessionId cookie in response");
@@ -157,6 +239,33 @@ public class LuxmedClient
             return request;
         };
 
-        return new LuxmedClient(prepareRequest);
+        var forgeryRequest = prepareRequest(HttpMethod.Get, "PatientPortal/NewPortal/security/getforgerytoken");
+        var forgeryResponse = await _client.SendAsync(forgeryRequest);
+        forgeryResponse.EnsureSuccessStatusCode();
+        var forgeryToken = await forgeryResponse.Content.ReadFromJsonAsync<ForgeryToken>();
+
+        PrepareRequest withForgery = (HttpMethod method, string url) =>
+        {
+            var request = prepareRequest(method, url);
+            var cookieToken = forgeryResponse.Headers
+            .GetValues("set-cookie")
+            .First(x => x.Contains("XSRF-TOKEN"))
+            .Split(";")
+            .First(x => x.Contains("XSRF-TOKEN"))
+            .Split(',')
+            .First(x => x.Contains("XSRF-TOKEN"));
+
+            var newCookies = request.Headers.GetValues("Cookie").ToList();
+            newCookies.Add(cookieToken);
+
+            request.Headers.Remove("Cookie");
+            request.Headers.Add("Cookie", newCookies);
+            request.Headers.Add("xsrf-token", forgeryToken.Token);
+            return request;
+        };
+
+        return new LuxmedClient(withForgery);
     }
 }
+
+public record ForgeryToken(string Token);

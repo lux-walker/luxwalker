@@ -45,6 +45,18 @@ public static class Endpoints
                   try
                   {
                         var days = await luxmed.SearchForVisitsAsync(variant, doctor?.Id);
+                        /*  var ordered = days
+                               .SelectMany(x => x.Terms)
+                               .OrderByDescending(x => x.DateTimeFrom)
+                               .ToList();
+
+                         var first = ordered.FirstOrDefault(x =>
+                         {
+                               return x.Doctor.LastName == "Chudzik".ToUpper() && x.DateTimeFrom.Day == 24 && TimeOnly.FromDateTime(x.DateTimeFrom) == TimeOnly.Parse("07:30");
+                         });
+
+                         LockTermResult reservation = await luxmed.LockTermAsync(first, variant);
+                         await luxmed.Book(reservation, first, variant); */
                   }
                   catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
                   {
@@ -52,8 +64,7 @@ public static class Endpoints
                   }
 
                   var model = LuxwalkerRequest.Create(request, doctor);
-
-                  Exchange.Requests.Add(model);
+                  Exchange.Add(model);
                   return Results.Json(model);
             })
             .WithDescription("Use this endpoint to start searching from appointments")
@@ -68,7 +79,7 @@ public static class Endpoints
                   var request = Exchange.Requests.FirstOrDefault(x => x.Id == id);
                   if (request is not null)
                   {
-                        Exchange.Requests.Remove(request);
+                        Exchange.Remove(request);
                         Visiter.Delete(id);
                         return Results.Ok();
                   }
@@ -76,7 +87,11 @@ public static class Endpoints
                   return Results.NotFound();
             });
 
-            app.MapDelete("api/walker/process/{id}/restart", (Guid id) =>
+            app.MapPost("api/walker/{email}/service/{service}", (string email, string service) => Exchange.Dehibernate(email, service))
+               .WithDescription("Repeat search for last processed service")
+               .WithOpenApi();
+
+            app.MapPost("api/walker/process/{id}/restart", (Guid id) =>
             {
                   Visiter.Restart(id);
                   return Results.Ok();
