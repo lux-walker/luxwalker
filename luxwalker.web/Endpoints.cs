@@ -47,19 +47,21 @@ public static class Endpoints
                   var model = LuxwalkerRequest.Create(request, doctor);
                   try
                   {
-                        return await emailSender.Authenticate(async sendEmail =>
+                        var result = await emailSender.Authenticate(async sendEmail =>
                         {
                               var result = await RequestHandler.HandleAsync(luxmed, model, sendEmail);
                               return result switch
                               {
                                     RequestHandlerResult.EMAIL_SENT => Results.Ok("Email has been sent"),
                                     RequestHandlerResult.BOOKED_ON_BEHALF => Results.Ok("Booked on behalf"),
-                                    RequestHandlerResult.VARIANT_NOT_FOUND => Results.NotFound($"Variant {request.Service} not found"),
-                                    RequestHandlerResult.NO_APPOINTMENTS_FOUND => Results.NotFound($"No appointments found for {request.Service}"),
-                                    RequestHandlerResult.BOOK_ON_BEHALF_FAILED_EMAIL_SENT => Results.Ok("Book on behalf failed, email has been sent"),
-                                    _ => Results.BadRequest("Unknown error")
+                                    _ => null
                               };
                         });
+
+                        if (result is not null)
+                        {
+                              return result;
+                        }
                   }
                   catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
                   {
