@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 
 public record LockTerm(
+        int FacilityId,
+        string FacilityName,
         int ServiceVariantId,
         string ServiceVariantName,
         int RoomId,
@@ -16,12 +18,14 @@ public record LockTerm(
 
 
 public record Book(
+    int FacilityId,
     Valuation Valuation,
     int ServiceVariantId,
     int RoomId,
     int TemporaryReservationId,
     DateTime Date,
     TimeOnly TimeFrom,
+    int DoctorId,
     int ScheduleId,
     int? ReferralId = null,
     int? EReferralId = null,
@@ -29,6 +33,55 @@ public record Book(
     bool? ReferralRequired = false,
     int? ValuationId = null
 );
+
+public record Appointment(
+    int ReservationId,
+    int ServiceInstanceId,
+    string NpsToken,
+    bool CanSelfConfirm
+);
+
+public record BookedValue(object[] Errors, bool HasErrors, Appointment Value)
+{
+    public Task<T> MatchAsync<T>(
+        Func<Appointment, Task<T>> onSuccess,
+        Func<object[], Task<T>> onErrors
+    )
+    {
+        return HasErrors ? onErrors(Errors) : onSuccess(Value);
+    }
+
+    public T Match<T>(
+        Func<Appointment, T> onSuccess,
+        Func<object[], T> onErrors
+    )
+    {
+        return HasErrors ? onErrors(Errors) : onSuccess(Value);
+    }
+
+    public void Match(
+        Action<Appointment> onSuccess,
+        Action<object[]> onErrors
+    )
+    {
+        if (HasErrors)
+        {
+            onErrors(Errors);
+        }
+        else
+        {
+            onSuccess(Value);
+        }
+    }
+
+    public Task MatchAsync<T>(
+        Func<Appointment, Task> onSuccess,
+        Func<object[], Task> onErrors
+    )
+    {
+        return HasErrors ? onErrors(Errors) : onSuccess(Value);
+    }
+}
 
 class LoginContent
 {
@@ -91,16 +144,19 @@ public class LuxmedClient
                                  x.LastName.ToLower() == lastName);
     }
 
-    public async Task Book(LockTermResult lockTerm, Term term, ServiceVariant variant)
+    public async Task<BookedValue> Book(LockTermResult lockTerm, Term term, ServiceVariant variant)
     {
+        var valuation = lockTerm.Value.Valuations.First();
         Book book = new(
-            lockTerm.Value.Valuations.First(),
-            variant.Id,
-            term.RoomId,
-            lockTerm.Value.TemporaryReservationId,
-            term.DateTimeFrom.Date,
-            TimeOnly.FromDateTime(term.DateTimeFrom),
-            term.ScheduleId
+            FacilityId: term.ClinicId,
+            Valuation: valuation,
+            ServiceVariantId: variant.Id,
+            RoomId: term.RoomId,
+            TemporaryReservationId: lockTerm.Value.TemporaryReservationId,
+            Date: term.DateTimeFrom.Date,
+            TimeFrom: TimeOnly.FromDateTime(term.DateTimeFrom),
+            DoctorId: term.Doctor.Id,
+            ScheduleId: term.ScheduleId
         );
 
         var url = "PatientPortal/NewPortal/reservation/confirm";
@@ -113,12 +169,14 @@ public class LuxmedClient
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         var response = await _client.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        var message = await response.Content.ReadAsStringAsync();
+        return await response.Content.ReadFromJsonAsync<BookedValue>();
     }
 
     public async Task<LockTermResult> LockTermAsync(Term term, ServiceVariant variant)
     {
         var lockTerm = new LockTerm(
+            term.ClinicId,
+            term.Clinic,
             variant.Id,
             variant.Name,
             term.RoomId,
@@ -138,8 +196,8 @@ public class LuxmedClient
         });
 
         request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
         var response = await _client.SendAsync(request);
+        var text = response.Content.ReadAsStringAsync();
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<LockTermResult>();
         return result;

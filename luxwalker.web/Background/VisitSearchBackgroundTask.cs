@@ -1,12 +1,4 @@
-using System.Net;
 using Coravel.Invocable;
-using static EmailSenderFactory;
-
-enum Result
-{
-    NoResult,
-    Sent
-}
 
 public class VisitSearchBackgroundTask : IInvocable
 {
@@ -39,30 +31,28 @@ public class VisitSearchBackgroundTask : IInvocable
         {
             Visiter.Visit(request, async token => await _emailSender.Authenticate(async sendEmail =>
             {
-                await FindVisitsAndSendEMail(request, sendEmail);
+                var luxmed = await LuxmedClient.LoginAsync(request.Login, request.Password);
+                var result = await RequestHandler.HandleAsync(luxmed, request, sendEmail);
+                Action action = TakePostRequestAction(result, request);
+                action();
+                return result;
             }));
         }
     }
 
-    private async Task<Result> FindVisitsAndSendEMail(LuxwalkerRequest request, EmailSender emailSender)
+    private Action TakePostRequestAction(RequestHandlerResult result, LuxwalkerRequest request) => result switch
     {
-        var luxmed = await LuxmedClient.LoginAsync(request.Login, request.Password);
-        var variant = await luxmed.FindVariantAsync(request.Service);
-        if (variant is null)
-        {
-            _logger.LogWarning($"Service {request.Service} not found");
-            return Result.NoResult;
-        }
+        RequestHandlerResult.EMAIL_SENT => () => Hibernate(request, $"Email has been sent for {request.Service} {request.NotificationEmail}"),
+        RequestHandlerResult.BOOKED_ON_BEHALF => () => Hibernate(request, $"Booked on behalf for {request.Service} {request.NotificationEmail}"),
+        RequestHandlerResult.VARIANT_NOT_FOUND => () => _logger.LogWarning($"Variant not found for {request.Service} {request.NotificationEmail}"),
+        RequestHandlerResult.NO_APPOINTMENTS_FOUND => () => _logger.LogWarning($"No appointments found for {request.Service} {request.NotificationEmail}"),
+        RequestHandlerResult.BOOK_ON_BEHALF_FAILED_EMAIL_SENT => () => Hibernate(request, $"Book on behalf failed for {request.Service} {request.NotificationEmail}. Email has been sent"),
+        _ => () => _logger.LogError($"Unknown error for {request.Service} {request.NotificationEmail}")
+    };
 
-        var days = await luxmed.SearchForVisitsAsync(variant, request.Doctor?.Id);
-        if (days.Length == 0)
-        {
-            _logger.LogWarning($"No available visits for service {request.Service}");
-            return Result.NoResult;
-        }
-
-        await emailSender.SendMessageAsync(request);
+    private static string Hibernate(LuxwalkerRequest request, string message)
+    {
         Exchange.Hibernate(request);
-        return Result.Sent;
+        return message;
     }
 }

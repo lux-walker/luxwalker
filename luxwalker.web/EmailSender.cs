@@ -16,16 +16,17 @@ public class EmailSenderFactory
     }
 
 
-    public async Task Authenticate(Func<EmailSender, Task> sendAction)
+    public async Task<T> Authenticate<T>(Func<EmailSender, Task<T>> sendAction)
     {
         using var client = new SmtpClient();
         await client.ConnectAsync("smtp.gmail.com", 587, false);
         await client.AuthenticateAsync(_login, _password);
-        await sendAction(new EmailSender(client, _emailExceptionNotification));
+        return await sendAction(new EmailSender(client, _emailExceptionNotification));
     }
 
     public class EmailSender(SmtpClient authenticatedClient, string emailExceptionNotification)
     {
+        private static readonly MailboxAddress _from = new("Luxwalker", "luxmedwalker@gmail.com");
         private readonly SmtpClient _authenticatedClient = authenticatedClient;
 
         public async Task SendErrorAsync(Exception exception)
@@ -46,11 +47,28 @@ public class EmailSenderFactory
             await _authenticatedClient.SendAsync(email);
         }
 
+        public async Task SendBookedOnBehalfMessageAsync(LuxwalkerRequest request)
+        {
+            var email = new MimeMessage();
+
+            email.From.Add(_from);
+            email.To.Add(new MailboxAddress("", request.NotificationEmail));
+            email.Subject = $"Zarezerwowano termin {request.Service}";
+
+            var text = $"<b>Zarezerwowano termin {request.Service}. Sprawdź w Luxmedzie!</b>";
+            email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
+            {
+                Text = text
+            };
+
+            await _authenticatedClient.SendAsync(email);
+        }
+
         public async Task SendMessageAsync(LuxwalkerRequest request)
         {
             var email = new MimeMessage();
 
-            email.From.Add(new MailboxAddress("Luxwalker", "luxmedwalker@gmail.com"));
+            email.From.Add(_from);
             email.To.Add(new MailboxAddress("", request.NotificationEmail));
             email.Subject = $"Nowe terminy {request.Service} w Luxmedzie!";
 

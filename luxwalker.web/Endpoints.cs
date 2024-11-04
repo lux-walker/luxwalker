@@ -17,7 +17,9 @@ public static class Endpoints
             app.MapGet("api/keep-alive", () => Results.Ok())
                .ExcludeFromDescription();
 
-            app.MapPost("api/walker", async ([FromBody] CreateLuxwalkerRequest request) =>
+            app.MapPost("api/walker", async (
+                  [FromBody] CreateLuxwalkerRequest request,
+                  [FromServices] EmailSenderFactory emailSender) =>
             {
                   if (!MiniValidator.TryValidate(request, out var errors))
                   {
@@ -42,28 +44,28 @@ public static class Endpoints
                         return Results.NotFound($"Service {request.Service} not found");
                   }
 
+                  var model = LuxwalkerRequest.Create(request, doctor);
                   try
                   {
-                        var days = await luxmed.SearchForVisitsAsync(variant, doctor?.Id);
-                        /*  var ordered = days
-                               .SelectMany(x => x.Terms)
-                               .OrderByDescending(x => x.DateTimeFrom)
-                               .ToList();
-
-                         var first = ordered.FirstOrDefault(x =>
-                         {
-                               return x.Doctor.LastName == "Chudzik".ToUpper() && x.DateTimeFrom.Day == 24 && TimeOnly.FromDateTime(x.DateTimeFrom) == TimeOnly.Parse("07:30");
-                         });
-
-                         LockTermResult reservation = await luxmed.LockTermAsync(first, variant);
-                         await luxmed.Book(reservation, first, variant); */
+                        return await emailSender.Authenticate(async sendEmail =>
+                        {
+                              var result = await RequestHandler.HandleAsync(luxmed, model, sendEmail);
+                              return result switch
+                              {
+                                    RequestHandlerResult.EMAIL_SENT => Results.Ok("Email has been sent"),
+                                    RequestHandlerResult.BOOKED_ON_BEHALF => Results.Ok("Booked on behalf"),
+                                    RequestHandlerResult.VARIANT_NOT_FOUND => Results.NotFound($"Variant {request.Service} not found"),
+                                    RequestHandlerResult.NO_APPOINTMENTS_FOUND => Results.NotFound($"No appointments found for {request.Service}"),
+                                    RequestHandlerResult.BOOK_ON_BEHALF_FAILED_EMAIL_SENT => Results.Ok("Book on behalf failed, email has been sent"),
+                                    _ => Results.BadRequest("Unknown error")
+                              };
+                        });
                   }
                   catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
                   {
                         Console.WriteLine("To many requests, but accepting");
                   }
 
-                  var model = LuxwalkerRequest.Create(request, doctor);
                   Exchange.Add(model);
                   return Results.Json(model);
             })
