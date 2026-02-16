@@ -1,0 +1,48 @@
+import actors/search_registry
+import app_context.{AppContext}
+import config
+import gleam/erlang/process
+import gleam/int
+import gleam/io
+import mist
+import repeatedly
+import root_http_requests_handler
+import wisp
+import wisp/wisp_mist
+
+fn every_minute() -> Int {
+  60_000
+}
+
+fn load_config() -> config.AppConfig {
+  case config.load() {
+    Ok(cfg) -> cfg
+    Error(error) -> {
+      io.println("FATAL: " <> config.print_error(error))
+      panic as "Failed to load configuration"
+    }
+  }
+}
+
+pub fn main() {
+  wisp.configure_logger()
+  let app_config = load_config()
+  let assert Ok(registry) = search_registry.start()
+  let ctx = AppContext(search_registry: registry, config: app_config)
+
+  repeatedly.call(every_minute(), Nil, fn(_, time_ms: Int) {
+    io.println("Pong: " <> int.to_string(time_ms))
+    Nil
+  })
+
+  let assert Ok(_) =
+    wisp_mist.handler(
+      root_http_requests_handler.handle_request(ctx, _),
+      "secret-key",
+    )
+    |> mist.new
+    |> mist.port(8000)
+    |> mist.start
+
+  process.sleep_forever()
+}

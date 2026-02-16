@@ -1,6 +1,0 @@
-@luxwalker.web_HostAddress = http://localhost:5031
-
-GET {{luxwalker.web_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
