@@ -8,12 +8,18 @@ import gleam/io
 import gleam/list
 import gleam/otp/actor
 import gleam/result
+import gleam/time/calendar
+import gleam/time/timestamp
 import handlers/search_handler
 import types/appointment_request.{type AppointmentRequest}
 
 const one_minute_ms = 60_000
 
+const twenty_minutes_ms = 1_200_000
+
 const one_hour_ms = 3_600_000
+
+const two_hours_ms = 7_200_000
 
 pub type Message {
   Init(self: process.Subject(Message))
@@ -36,10 +42,29 @@ pub type State {
   )
 }
 
+fn production_timeout_ms() -> Int {
+  let now = timestamp.system_time()
+  let #(_, time) = timestamp.to_calendar(now, calendar.local_offset())
+  let hour = time.hours
+  let minute = time.minutes
+
+  case hour {
+    h if h >= 5 && h < 8 -> twenty_minutes_ms
+    h if h >= 23 || h < 5 -> {
+      let minutes_until_5am = case h >= 23 {
+        True -> { 24 - hour } * 60 - minute + 5 * 60
+        False -> { 5 - hour } * 60 - minute
+      }
+      int.min(two_hours_ms, minutes_until_5am * 60_000)
+    }
+    _ -> one_hour_ms
+  }
+}
+
 fn send_continue_after(state: State) {
   let timeout_ms = case state.config.environment {
     Development -> one_minute_ms
-    Production -> one_hour_ms
+    Production -> production_timeout_ms()
   }
 
   process.send_after(state.self, timeout_ms, ContinueProcessing)
