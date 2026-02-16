@@ -1,7 +1,7 @@
 # Build stage
 FROM erlang:27-alpine AS builder
 
-ARG GLEAM_VERSION=v1.6.3
+ARG GLEAM_VERSION=v1.14.0
 
 # Install build dependencies
 RUN apk add --no-cache curl tar
@@ -30,8 +30,8 @@ WORKDIR /app
 # Copy the built application from builder
 COPY --from=builder /app/build/erlang-shipment ./
 
-# Expose port (render.com uses PORT env var)
-EXPOSE 8000
+# Expose port (render.com sets PORT env var, default 8080)
+EXPOSE 8080
 
 # Run the application
 ENTRYPOINT ["/app/entrypoint.sh"]

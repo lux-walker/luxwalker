@@ -1,9 +1,11 @@
 import actors/search_registry
 import app_context.{AppContext}
 import config
+import envoy
 import gleam/erlang/process
 import gleam/int
 import gleam/io
+import gleam/result
 import mist
 import repeatedly
 import root_http_requests_handler
@@ -12,6 +14,12 @@ import wisp/wisp_mist
 
 fn every_minute() -> Int {
   60_000
+}
+
+fn get_port() -> Int {
+  envoy.get("PORT")
+  |> result.then(int.parse)
+  |> result.unwrap(8080)
 }
 
 fn load_config() -> config.AppConfig {
@@ -35,13 +43,16 @@ pub fn main() {
     Nil
   })
 
+  let port = get_port()
+  io.println("Starting server on port " <> int.to_string(port))
+
   let assert Ok(_) =
     wisp_mist.handler(
       root_http_requests_handler.handle_request(ctx, _),
       "secret-key",
     )
     |> mist.new
-    |> mist.port(8000)
+    |> mist.port(port)
     |> mist.start
 
   process.sleep_forever()
