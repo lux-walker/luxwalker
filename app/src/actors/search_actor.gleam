@@ -222,7 +222,7 @@ fn search(
             new_attempt,
             "Visits not found",
           )
-          process.send(reply_subject, SearchComplete("Error: " <> state.id))
+          process.send(reply_subject, SearchComplete("No visits, request scheduled"))
           send_continue_after(state)
           actor.continue(State(..state, attempt: new_attempt))
         }
