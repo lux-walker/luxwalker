@@ -3,6 +3,8 @@ import app_context.{AppContext}
 import config
 import envoy
 import gleam/erlang/process
+import gleam/http/request
+import gleam/httpc
 import gleam/int
 import gleam/io
 import gleam/result
@@ -35,14 +37,38 @@ fn load_config() -> config.AppConfig {
   }
 }
 
+fn ping_endpoint_url(environment: config.Environment) -> String {
+  case environment {
+    config.Development -> "http://localhost:8080/api/ping"
+    config.Production -> "https://luxwalker.onrender.com/api/ping"
+  }
+}
+
+fn send_ping(environment: config.Environment) -> Nil {
+  let url = ping_endpoint_url(environment)
+  io.println("Ping")
+
+  case request.to(url) {
+    Ok(req) -> {
+      case httpc.send(req) {
+        Ok(_response) -> io.println("Pong")
+        Error(_) -> io.println("Ping failed")
+      }
+    }
+    Error(_) -> io.println("Invalid ping URL")
+  }
+
+  Nil
+}
+
 pub fn main() {
   wisp.configure_logger()
   let app_config = load_config()
   let assert Ok(registry) = search_registry.start()
   let ctx = AppContext(search_registry: registry, config: app_config)
 
-  repeatedly.call(every_minute(), Nil, fn(_, time_ms: Int) {
-    io.println("Pong: " <> int.to_string(time_ms))
+  repeatedly.call(every_minute(), Nil, fn(_, _: Int) {
+    send_ping(app_config.environment)
     Nil
   })
 

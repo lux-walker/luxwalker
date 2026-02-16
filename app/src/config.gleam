@@ -4,8 +4,25 @@ import envoy
 import gleam/io
 import gleam/result
 
+pub type Environment {
+  Development
+  Production
+}
+
+pub fn get_environment() -> Environment {
+  case envoy.get("GLEAM_ENV") {
+    Ok(environment) ->
+      case environment {
+        "development" -> Development
+        "production" -> Production
+        _ -> Production
+      }
+    Error(_) -> Production
+  }
+}
+
 pub type AppConfig {
-  AppConfig(email: EmailConfig)
+  AppConfig(email: EmailConfig, environment: Environment)
 }
 
 pub type ConfigError {
@@ -17,7 +34,8 @@ pub fn load() -> Result(AppConfig, ConfigError) {
   load_env_file()
 
   use email_config <- result.try(load_email_config())
-  Ok(AppConfig(email: email_config))
+  let environment = get_environment()
+  Ok(AppConfig(email: email_config, environment: environment))
 }
 
 fn load_env_file() -> Nil {

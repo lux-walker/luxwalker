@@ -1,0 +1,23 @@
+{
+  "name": "gleam",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "developer",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Gleam.gleam",
+        "streetsidesoftware.code-spell-checker",
+        "esbenp.prettier-vscode",
+        "tamasfe.even-better-toml",
+        "mikestead.dotenv",
+        "humao.rest-client"
+      ],
+      "settings": {
+        "gleam.path": "/usr/local/bin/gleam"
+      }
+    }
+  },
+  "forwardPorts": [8000],
+  "postCreateCommand": "gleam --version && claude --version",
+  "remoteEnv": {}
+}

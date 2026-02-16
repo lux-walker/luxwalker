@@ -1,7 +1,7 @@
 import actors/search_registry
 import clients/email_client
 import clients/luxmed_client
-import config.{type AppConfig}
+import config.{type AppConfig, type Environment, Development, Production}
 import gleam/erlang/process
 import gleam/int
 import gleam/io
@@ -12,6 +12,8 @@ import handlers/search_handler
 import types/appointment_request.{type AppointmentRequest}
 
 const one_minute_ms = 60_000
+
+const one_hour_ms = 3_600_000
 
 pub type Message {
   Init(self: process.Subject(Message))
@@ -32,6 +34,15 @@ pub type State {
     registry: process.Subject(search_registry.Message),
     config: AppConfig,
   )
+}
+
+fn send_continue_after(state: State) {
+  let timeout_ms = case state.config.environment {
+    Development -> one_minute_ms
+    Production -> one_hour_ms
+  }
+
+  process.send_after(state.self, timeout_ms, ContinueProcessing)
 }
 
 fn error_to_search_complete(error: search_handler.SearchError) -> SearchResult {
@@ -141,7 +152,12 @@ fn init(
 ) -> actor.Next(State, Message) {
   io.println("Actor " <> state.id <> ": Initialized")
   appointment_request.print(state.request)
-  search_registry.register_search(state.registry, state.id)
+  search_registry.register_search(
+    state.registry,
+    state.id,
+    state.request.service,
+    state.request.doctor,
+  )
   io.println("Actor " <> state.id <> ": Registered search")
   actor.continue(State(..state, self: self))
 }
@@ -166,7 +182,7 @@ fn search(
     Ok(terms) -> {
       io.println("Actor " <> state.id <> ": Search complete, stopping actor")
       let result = terms |> terms_to_string(state)
-      search_registry.update_result(state.registry, state.id, result)
+      search_registry.request_completed(state.registry, state.id, result)
       process.send(reply_subject, SearchComplete(result))
       actor.stop()
     }
@@ -174,9 +190,16 @@ fn search(
       case error {
         search_handler.VisitsNotFound -> {
           io.println("Visit not found, will retry in the future. Accepted.")
+          let new_attempt = state.attempt + 1
+          search_registry.request_attempt_failed(
+            state.registry,
+            state.id,
+            new_attempt,
+            "Visits not found",
+          )
           process.send(reply_subject, SearchComplete("Error: " <> state.id))
-          process.send_after(state.self, one_minute_ms, ContinueProcessing)
-          actor.continue(State(..state, attempt: state.attempt + 1))
+          send_continue_after(state)
+          actor.continue(State(..state, attempt: new_attempt))
         }
         actual_error -> {
           print_search_error(error, state)
@@ -195,7 +218,7 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
         "Actor " <> state.id <> ": Processing complete, stopping actor",
       )
       let result = "Results for " <> state.id
-      search_registry.update_result(state.registry, state.id, result)
+      search_registry.request_completed(state.registry, state.id, result)
       email_client.send_appointment_found_email(
         state.config.email,
         state.request.notification_email,
@@ -206,8 +229,15 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
     }
     Error(_) -> {
       io.println("Actor " <> state.id <> ": Processing failed, will retry")
-      process.send_after(state.self, one_minute_ms, ContinueProcessing)
-      actor.continue(State(..state, attempt: state.attempt + 1))
+      let new_attempt = state.attempt + 1
+      search_registry.request_attempt_failed(
+        state.registry,
+        state.id,
+        new_attempt,
+        "Processing failed",
+      )
+      send_continue_after(state)
+      actor.continue(State(..state, attempt: new_attempt))
     }
   }
 }
