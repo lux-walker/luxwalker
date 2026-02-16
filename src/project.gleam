@@ -17,9 +17,12 @@ fn every_minute() -> Int {
 }
 
 fn get_port() -> Int {
-  envoy.get("PORT")
-  |> result.then(int.parse)
-  |> result.unwrap(8080)
+  case envoy.get("PORT") {
+    Ok(port_str) ->
+      int.parse(port_str)
+      |> result.unwrap(8080)
+    Error(_) -> 8080
+  }
 }
 
 fn load_config() -> config.AppConfig {
