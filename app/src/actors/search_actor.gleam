@@ -1,7 +1,7 @@
 import actors/search_registry
 import clients/email_client
 import clients/luxmed_client
-import config.{type AppConfig, type Environment, Development, Production}
+import config.{type AppConfig, Development, Production}
 import gleam/erlang/process
 import gleam/int
 import gleam/io
@@ -222,7 +222,10 @@ fn search(
             new_attempt,
             "Visits not found",
           )
-          process.send(reply_subject, SearchComplete("No visits, request scheduled"))
+          process.send(
+            reply_subject,
+            SearchComplete("No visits, request scheduled"),
+          )
           send_continue_after(state)
           actor.continue(State(..state, attempt: new_attempt))
         }
@@ -252,14 +255,14 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
       )
       actor.stop()
     }
-    Error(_) -> {
+    Error(error) -> {
       io.println("Actor " <> state.id <> ": Processing failed, will retry")
       let new_attempt = state.attempt + 1
       search_registry.request_attempt_failed(
         state.registry,
         state.id,
         new_attempt,
-        "Processing failed",
+        search_handler.get_error_message(error),
       )
       send_continue_after(state)
       actor.continue(State(..state, attempt: new_attempt))

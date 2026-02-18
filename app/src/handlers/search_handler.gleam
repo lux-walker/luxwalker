@@ -20,6 +20,16 @@ pub type SearchError {
   Unknown(message: String)
 }
 
+pub fn get_error_message(error: SearchError) -> String {
+  case error {
+    AuthenticationFailed -> "Authentication failed"
+    VariantNotFound -> "Variant not found"
+    DoctorNotFound -> "Doctor not found"
+    VisitsNotFound -> "Visits not found"
+    Unknown(message) -> message
+  }
+}
+
 fn to_search_error(
   err: luxmed_client.LuxmedApiError,
   on_not_found: SearchError,
