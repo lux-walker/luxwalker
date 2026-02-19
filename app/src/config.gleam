@@ -22,7 +22,7 @@ pub fn get_environment() -> Environment {
 }
 
 pub type AppConfig {
-  AppConfig(email: EmailConfig, environment: Environment)
+  AppConfig(email: EmailConfig, environment: Environment, ntfy_topic: String)
 }
 
 pub type ConfigError {
@@ -34,8 +34,12 @@ pub fn load() -> Result(AppConfig, ConfigError) {
   load_env_file()
 
   use email_config <- result.try(load_email_config())
+  use ntfy_topic <- result.try(
+    envoy.get("NTFY_TOPIC")
+    |> result.replace_error(MissingEnvVar("NTFY_TOPIC")),
+  )
   let environment = get_environment()
-  Ok(AppConfig(email: email_config, environment: environment))
+  Ok(AppConfig(email: email_config, environment: environment, ntfy_topic: ntfy_topic))
 }
 
 fn load_env_file() -> Nil {

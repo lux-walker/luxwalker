@@ -1,6 +1,7 @@
 import actors/search_registry
 import clients/email_client
 import clients/luxmed_client
+import clients/ntfy_client
 import config.{type AppConfig, Development, Production}
 import gleam/erlang/process
 import gleam/int
@@ -184,6 +185,11 @@ fn init(
     state.request.doctor,
   )
   io.println("Actor " <> state.id <> ": Registered search")
+  ntfy_client.send_search_started(
+    state.config.ntfy_topic,
+    state.request.service,
+    state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
+  )
   actor.continue(State(..state, self: self))
 }
 
@@ -203,6 +209,7 @@ fn search(
   reply_subject: process.Subject(SearchResult),
 ) -> actor.Next(State, Message) {
   io.println("Actor " <> state.id <> ": Searching...")
+
   case search_handler.handle_search(state.request) {
     Ok(terms) -> {
       io.println("Actor " <> state.id <> ": Search complete, stopping actor")
@@ -250,6 +257,11 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
       email_client.send_appointment_found_email(
         state.config.email,
         state.request.notification_email,
+        state.request.service,
+        state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
+      )
+      ntfy_client.send_appointment_found(
+        state.config.ntfy_topic,
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
