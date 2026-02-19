@@ -185,7 +185,7 @@ pub fn handle_search(
   ))
 
   let filtered_terms = filter_and_remove_empty(terms, doctor)
-  case filter_and_remove_empty(terms, doctor) |> list.length() {
+  case filtered_terms |> list.length() {
     0 -> Error(VisitsNotFound)
     _ -> Ok(filtered_terms)
   }

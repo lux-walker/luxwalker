@@ -106,7 +106,7 @@ fn handle_walker_get(ctx: AppContext) -> wisp.Response {
       let searches_json =
         dict.to_list(results)
         |> json.array(fn(entry) {
-          let #(id, search_registry.SearchRecord(status, service, doctor)) = entry
+          let #(id, search_registry.SearchRecord(status, service, doctor, ts)) = entry
           json.object([
             #("id", json.string(id)),
             #("service", json.string(service)),
@@ -118,6 +118,7 @@ fn handle_walker_get(ctx: AppContext) -> wisp.Response {
               ]),
             ),
             #("status", search_status_to_json(status)),
+            #("timestamp", json.string(search_registry.format_timestamp(ts))),
           ])
         })
 

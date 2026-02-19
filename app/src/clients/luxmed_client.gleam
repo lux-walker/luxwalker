@@ -4,10 +4,9 @@ import gleam/http/request
 import gleam/http/response.{type Response}
 import gleam/httpc
 import gleam/int
-import gleam/io
 import gleam/json
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option, Some}
 import gleam/result
 import gleam/string
 import gleam/uri

@@ -1,6 +1,11 @@
 import gcourier/message
 import gcourier/smtp
+import gleam/int
+import gleam/io
 import gleam/option.{Some}
+import gleam/string
+import gleam/time/calendar
+import gleam/time/timestamp
 
 pub type EmailConfig {
   EmailConfig(
@@ -17,32 +22,22 @@ pub type EmailError {
   SendFailed(message: String)
 }
 
-pub fn send_test_email(config: EmailConfig, to: String) -> Nil {
-  let subject = "Luxwalker Test Email"
-  let body =
-    "<html><body><h1>Test Email from Luxwalker</h1><p>This is a test email sent from the Gleam application.</p></body></html>"
-
-  let email =
-    message.build()
-    |> message.set_from(config.from_email, Some(config.from_name))
-    |> message.add_recipient(to, message.To)
-    |> message.set_subject(subject)
-    |> message.set_html(body)
-
-  smtp.send(
-    config.smtp_host,
-    config.smtp_port,
-    Some(#(config.username, config.password)),
-    email,
-  )
-}
-
 pub fn send_appointment_found_email(
   config: EmailConfig,
   to: String,
   service: String,
   doctor: String,
 ) -> Nil {
+  io.println(
+    "Sending appointment found email to "
+    <> to
+    <> " for service "
+    <> service
+    <> " and doctor "
+    <> doctor
+    <> " timestamp "
+    <> format_current_time(),
+  )
   let subject = "Nowe terminy " <> service <> " w Luxmedzie!"
   let body =
     "<html><body><b>Pojawiły się nowe terminy "
@@ -66,6 +61,25 @@ pub fn send_appointment_found_email(
   )
 }
 
+fn format_current_time() -> String {
+  let now = timestamp.system_time()
+  let #(date, time) = timestamp.to_calendar(now, calendar.local_offset())
+  let month = calendar.month_to_int(date.month)
+  pad2(date.year)
+  <> "-"
+  <> pad2(month)
+  <> "-"
+  <> pad2(date.day)
+  <> " "
+  <> pad2(time.hours)
+  <> ":"
+  <> pad2(time.minutes)
+}
+
+fn pad2(value: Int) -> String {
+  value |> int.to_string |> string.pad_start(2, "0")
+}
+
 pub fn send_error_email(
   config: EmailConfig,
   to: String,
@@ -73,7 +87,9 @@ pub fn send_error_email(
 ) -> Nil {
   let subject = "Luxwalker Error"
   let body =
-    "<html><body><b>Wystąpił błąd:</b><p>" <> error_message <> "</p></body></html>"
+    "<html><body><b>Wystąpił błąd:</b><p>"
+    <> error_message
+    <> "</p></body></html>"
 
   let email =
     message.build()
