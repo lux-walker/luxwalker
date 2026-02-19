@@ -190,6 +190,7 @@ fn init(
     state.request.service,
     state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
   )
+
   actor.continue(State(..state, self: self))
 }
 

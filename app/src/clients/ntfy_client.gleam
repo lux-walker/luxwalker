@@ -12,6 +12,8 @@ pub fn send_appointment_found(
     topic,
     "Nowe terminy w Luxmedzie!",
     "Nowe terminy " <> service <> " u lekarza " <> doctor,
+    "urgent",
+    "rotating_light",
   )
 }
 
@@ -24,10 +26,18 @@ pub fn send_search_started(
     topic,
     "Nowe wyszukiwanie w Luxmedzie",
     "Rozpoczęto wyszukiwanie " <> service <> " u lekarza " <> doctor,
+    "default",
+    "mag",
   )
 }
 
-fn send(topic: String, title: String, body: String) -> Nil {
+fn send(
+  topic: String,
+  title: String,
+  body: String,
+  priority: String,
+  tags: String,
+) -> Nil {
   let url = "https://ntfy.sh/" <> topic
 
   case request.to(url) {
@@ -40,6 +50,8 @@ fn send(topic: String, title: String, body: String) -> Nil {
         req
         |> request.set_method(http.Post)
         |> request.set_header("title", title)
+        |> request.set_header("priority", priority)
+        |> request.set_header("tags", tags)
         |> request.set_body(body)
 
       case httpc.send(req) {
