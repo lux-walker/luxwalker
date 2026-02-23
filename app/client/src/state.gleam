@@ -11,8 +11,8 @@ import ui_types.{
 
 fn on_url_change(uri: uri.Uri) -> Msg {
   case uri.path_segments(uri.path) {
-    ["searches"] -> OnRouteChange(ActiveSearches)
-    _ -> OnRouteChange(CreateSearch)
+    ["create"] -> OnRouteChange(CreateSearch)
+    _ -> OnRouteChange(ActiveSearches)
   }
 }
 
@@ -20,18 +20,19 @@ fn get_initial_route() -> Route {
   case modem.initial_uri() {
     Ok(uri) ->
       case uri.path_segments(uri.path) {
-        ["searches"] -> ActiveSearches
-        _ -> CreateSearch
+        ["create"] -> CreateSearch
+        _ -> ActiveSearches
       }
-    Error(_) -> CreateSearch
+    Error(_) -> ActiveSearches
   }
 }
 
 pub fn init(_flags) -> #(Model, Effect(Msg)) {
   let initial_route = get_initial_route()
   let initial_effects = case initial_route {
-    ActiveSearches -> effect.batch([modem.init(on_url_change), fetch_searches()])
-    _ -> modem.init(on_url_change)
+    ActiveSearches ->
+      effect.batch([modem.init(on_url_change), fetch_searches()])
+    CreateSearch -> modem.init(on_url_change)
   }
   #(
     Model(route: initial_route, searches: [], form: ui_types.empty_form()),

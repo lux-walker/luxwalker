@@ -17,9 +17,13 @@ import ui_types.{
   Service, Submit, UpdateField,
 }
 
+fn divc(classes: String, children: List(Element(Msg))) -> Element(Msg) {
+  div([class(classes)], children)
+}
+
 pub fn view(model: Model) -> Element(Msg) {
-  div([class("min-h-screen bg-gradient-to-br from-slate-50 to-slate-100")], [
-    div([class("max-w-2xl mx-auto px-4 py-10")], [
+  divc("min-h-screen bg-gradient-to-br from-slate-50 to-slate-100", [
+    divc("max-w-2xl mx-auto px-4 py-10", [
       h1([class("text-3xl font-bold text-slate-900")], [text("Luxwalker")]),
       p([class("text-slate-500 mt-1 mb-8")], [
         text("Medical appointment search"),
@@ -35,8 +39,8 @@ pub fn view(model: Model) -> Element(Msg) {
 
 fn view_tabs(current_route: Route) -> Element(Msg) {
   nav([class("flex border-b border-slate-200 mb-8")], [
-    view_tab("Create Search", "/", current_route == CreateSearch),
-    view_tab("Active Searches", "/searches", current_route == ActiveSearches),
+    view_tab("Active Searches", "/", current_route == ActiveSearches),
+    view_tab("Create Search", "/create", current_route == CreateSearch),
   ])
 }
 
@@ -62,11 +66,11 @@ fn view_form(search_form: AppointmentRequest) -> Element(Msg) {
       h2([class("text-lg font-semibold text-slate-800 mb-4")], [
         text("New Search"),
       ]),
-      div([class("space-y-4")], [
+      divc("space-y-4", [
         view_input("Login", "text", search_form.login, Login),
         view_input("Password", "password", search_form.password, Password),
         view_input("Service", "text", search_form.service, Service),
-        div([class("grid grid-cols-1 sm:grid-cols-2 gap-4")], [
+        divc("grid grid-cols-1 sm:grid-cols-2 gap-4", [
           view_input(
             "Doctor First Name",
             "text",
@@ -123,26 +127,22 @@ fn view_input(
 }
 
 fn view_searches(searches: List(SearchSummary)) -> Element(Msg) {
-  div([class("bg-white rounded-xl shadow-sm border border-slate-200 p-6")], [
+  divc("bg-white rounded-xl shadow-sm border border-slate-200 p-6", [
     h2([class("text-lg font-semibold text-slate-800 mb-4")], [
       text("Active Searches"),
     ]),
     case searches {
       [] -> p([class("text-slate-400 text-sm")], [text("No active searches")])
-      _ -> div([class("space-y-3")], searches |> list.map(view_search_card))
+      _ -> divc("space-y-3", searches |> list.map(view_search_card))
     },
   ])
 }
 
 fn view_search_card(summary: SearchSummary) -> Element(Msg) {
-  div(
+  divc(
+    "border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors",
     [
-      class(
-        "border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors",
-      ),
-    ],
-    [
-      div([class("flex items-center justify-between mb-2")], [
+      divc("flex items-center justify-between mb-2", [
         strong([class("text-sm font-semibold text-slate-800")], [
           text(summary.service),
         ]),
@@ -150,22 +150,17 @@ fn view_search_card(summary: SearchSummary) -> Element(Msg) {
           text(summary.id),
         ]),
       ]),
-      div(
-        [
-          class("flex items-center justify-between mb-3 text-sm text-slate-500"),
-        ],
-        [
-          span([], [
-            text(
-              "Dr. "
-              <> summary.doctor_first_name
-              <> " "
-              <> summary.doctor_last_name,
-            ),
-          ]),
-          span([class("text-xs")], [text(summary.timestamp)]),
-        ],
-      ),
+      divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
+        span([], [
+          text(
+            "Dr. "
+            <> summary.doctor_first_name
+            <> " "
+            <> summary.doctor_last_name,
+          ),
+        ]),
+        span([class("text-xs")], [text(summary.timestamp)]),
+      ]),
       view_status_badge(summary.status),
     ],
   )
@@ -182,15 +177,18 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
         ],
         [text("Waiting")],
       )
-    Processing(attempts, _last_message) ->
-      span(
-        [
-          class(
-            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800",
-          ),
-        ],
-        [text("Processing (attempt " <> int.to_string(attempts) <> ")")],
-      )
+    Processing(attempts, last_message) ->
+      div([], [
+        span(
+          [
+            class(
+              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800",
+            ),
+          ],
+          [text("Processing (attempt " <> int.to_string(attempts) <> ")")],
+        ),
+        p([class("text-xs text-slate-400 mt-1")], [text(last_message)]),
+      ])
     Completed(result) ->
       span(
         [
