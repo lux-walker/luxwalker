@@ -187,7 +187,14 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
           ],
           [text("Processing (attempt " <> int.to_string(attempts) <> ")")],
         ),
-        p([class("text-xs text-slate-400 mt-1")], [text(last_message)]),
+        span(
+          [
+            class(
+              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 ml-1",
+            ),
+          ],
+          [text(last_message)],
+        ),
       ])
     Completed(result) ->
       span(
