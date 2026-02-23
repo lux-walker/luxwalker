@@ -3,8 +3,8 @@ FROM erlang:27-alpine AS builder
 
 ARG GLEAM_VERSION=v1.14.0
 
-# Install build dependencies
-RUN apk add --no-cache curl tar
+# Install build dependencies (includes Node.js for client build)
+RUN apk add --no-cache curl tar nodejs npm
 
 # Install Gleam
 RUN curl -fsSL -o gleam.tar.gz https://github.com/gleam-lang/gleam/releases/download/${GLEAM_VERSION}/gleam-${GLEAM_VERSION}-x86_64-unknown-linux-musl.tar.gz \
@@ -12,14 +12,19 @@ RUN curl -fsSL -o gleam.tar.gz https://github.com/gleam-lang/gleam/releases/down
     && rm gleam.tar.gz \
     && chmod +x /usr/local/bin/gleam
 
-WORKDIR /app
+WORKDIR /build
 
-# Copy project files
-COPY gleam.toml manifest.toml ./
-COPY src ./src
-COPY test ./test
+# Copy all three packages
+COPY shared ./shared
+COPY client ./client
+COPY server ./server
 
-# Build the project
+# Build the client (JavaScript target)
+WORKDIR /build/client
+RUN gleam run -m lustre/dev build --minify --outdir=../server/priv/static
+
+# Build the server (Erlang target)
+WORKDIR /build/server
 RUN gleam export erlang-shipment
 
 # Runtime stage
@@ -27,8 +32,8 @@ FROM erlang:27-alpine
 
 WORKDIR /app
 
-# Copy the built application from builder
-COPY --from=builder /app/build/erlang-shipment ./
+# Copy the built server application
+COPY --from=builder /build/server/build/erlang-shipment ./
 
 # Expose port (render.com sets PORT env var, default 8080)
 EXPOSE 8080

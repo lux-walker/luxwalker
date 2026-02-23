@@ -10,7 +10,7 @@ import gleam/string
 import gleam/time/calendar
 import gleam/time/duration
 import gleam/time/timestamp
-import types/appointment_request.{type AppointmentRequest}
+import shared/types.{type AppointmentRequest}
 
 pub type SearchError {
   AuthenticationFailed
@@ -162,7 +162,20 @@ fn create_client(
 ) -> Result(luxmed_client.LuxmedClient, SearchError) {
   use client <- result.try(
     luxmed_client.login(request.login, request.password)
-    |> result.map_error(fn(_) { AuthenticationFailed }),
+    |> result.map_error(fn(error) {
+      case error {
+        luxmed_client.Unauthorized(message) ->
+          io.println("Login error: " <> message)
+        luxmed_client.RequestFailed(message) ->
+          io.println("Login error: " <> message)
+        luxmed_client.ParseError(message) ->
+          io.println("Login error: " <> message)
+        luxmed_client.NotFound(resource) ->
+          io.println("Login error: " <> resource)
+      }
+
+      to_search_error(error, Unknown("Unknown login error"))
+    }),
   )
 
   io.println("Logged in to Luxmed")

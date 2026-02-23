@@ -6,7 +6,7 @@ import gleam/dynamic/decode
 import gleam/http.{Get, Post}
 import gleam/io
 import gleam/json
-import types/appointment_request
+import shared/types
 import wisp
 import youid/uuid
 
@@ -34,7 +34,7 @@ fn handle_ping() -> wisp.Response {
 
 fn handle_walker_post(ctx: AppContext, req: wisp.Request) -> wisp.Response {
   use json_body <- wisp.require_json(req)
-  case decode.run(json_body, appointment_request.decoder()) {
+  case decode.run(json_body, types.appointment_request_decoder()) {
     Ok(request) -> {
       let id = uuid.v4_string()
       case

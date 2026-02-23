@@ -6,7 +6,7 @@ import gleam/otp/actor
 import gleam/string
 import gleam/time/calendar
 import gleam/time/timestamp.{type Timestamp}
-import types/appointment_request.{type Doctor}
+import shared/types.{type Doctor}
 
 pub type SearchStatus {
   NoResult
@@ -166,7 +166,7 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
           SearchRecord(
             status: NoResult,
             service: "",
-            doctor: appointment_request.Doctor(first_name: "", last_name: ""),
+            doctor: types.Doctor(first_name: "", last_name: ""),
             timestamp: timestamp.system_time(),
           )
       }

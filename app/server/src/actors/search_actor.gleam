@@ -12,7 +12,8 @@ import gleam/result
 import gleam/time/calendar
 import gleam/time/timestamp
 import handlers/search_handler
-import types/appointment_request.{type AppointmentRequest}
+import shared/types.{type AppointmentRequest}
+import types/appointment_request
 
 const one_minute_ms = 60_000
 

@@ -4,8 +4,16 @@ ARG GLEAM_VERSION=v1.14.0
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
-    sudo git zsh curl wget ca-certificates \
+    sudo git zsh curl wget ca-certificates xz-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Install watchexec
+ARG WATCHEXEC_VERSION=v2.4.1
+RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/' | sed 's/aarch64/aarch64/') \
+    && curl -fsSL "https://github.com/watchexec/watchexec/releases/download/${WATCHEXEC_VERSION}/watchexec-${WATCHEXEC_VERSION#v}-${ARCH}-unknown-linux-musl.tar.xz" -o /tmp/watchexec.tar.xz \
+    && tar -xf /tmp/watchexec.tar.xz -C /tmp \
+    && mv /tmp/watchexec-${WATCHEXEC_VERSION#v}-${ARCH}-unknown-linux-musl/watchexec /usr/local/bin/ \
+    && rm -rf /tmp/watchexec*
 
 # Install Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \

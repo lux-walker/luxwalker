@@ -21,13 +21,13 @@ pub fn get_environment() -> Environment {
   }
 }
 
-pub type AppConfig {
-  AppConfig(email: EmailConfig, environment: Environment, ntfy_topic: String)
-}
-
 pub type ConfigError {
   MissingEnvVar(name: String)
   InvalidValue(name: String, reason: String)
+}
+
+pub type AppConfig {
+  AppConfig(email: EmailConfig, environment: Environment, ntfy_topic: String)
 }
 
 pub fn load() -> Result(AppConfig, ConfigError) {
@@ -39,7 +39,11 @@ pub fn load() -> Result(AppConfig, ConfigError) {
     |> result.replace_error(MissingEnvVar("NTFY_TOPIC")),
   )
   let environment = get_environment()
-  Ok(AppConfig(email: email_config, environment: environment, ntfy_topic: ntfy_topic))
+  Ok(AppConfig(
+    email: email_config,
+    environment: environment,
+    ntfy_topic: ntfy_topic,
+  ))
 }
 
 fn load_env_file() -> Nil {

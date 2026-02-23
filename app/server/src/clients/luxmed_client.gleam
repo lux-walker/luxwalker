@@ -4,6 +4,7 @@ import gleam/http/request
 import gleam/http/response.{type Response}
 import gleam/httpc
 import gleam/int
+import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, Some}
@@ -216,7 +217,9 @@ pub fn login(
     Ok(login_response) -> {
       let cookies = extract_cookies(login_response)
       case list.is_empty(cookies) {
-        True -> Error(Unauthorized("Missing cookies in login response"))
+        True -> {
+          Error(Unauthorized("Missing cookies in login response"))
+        }
         False -> {
           case json.parse(login_response.body, login_decoder()) {
             Error(_) -> Error(ParseError("Failed to parse login response"))
