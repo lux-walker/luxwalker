@@ -18,11 +18,37 @@ pub type EmailConfig {
   )
 }
 
-pub type EmailError {
-  SendFailed(message: String)
+pub type EmailClient {
+  EmailClient(
+    send_appointment_found: fn(String, String, String) -> Nil,
+    send_error: fn(String, String) -> Nil,
+  )
 }
 
-pub fn send_appointment_found_email(
+pub fn create_client(config: EmailConfig, skip: Bool) -> EmailClient {
+  case skip {
+    True ->
+      EmailClient(
+        send_appointment_found: fn(_, _, _) {
+          io.println("Email: Skipping appointment found (notifications disabled)")
+        },
+        send_error: fn(_, _) {
+          io.println("Email: Skipping error email (notifications disabled)")
+        },
+      )
+    False ->
+      EmailClient(
+        send_appointment_found: fn(to, service, doctor) {
+          send_appointment_found_email(config, to, service, doctor)
+        },
+        send_error: fn(to, error_message) {
+          send_error_email(config, to, error_message)
+        },
+      )
+  }
+}
+
+fn send_appointment_found_email(
   config: EmailConfig,
   to: String,
   service: String,
@@ -80,7 +106,7 @@ fn pad2(value: Int) -> String {
   value |> int.to_string |> string.pad_start(2, "0")
 }
 
-pub fn send_error_email(
+fn send_error_email(
   config: EmailConfig,
   to: String,
   error_message: String,

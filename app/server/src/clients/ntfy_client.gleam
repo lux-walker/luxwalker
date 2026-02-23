@@ -3,32 +3,49 @@ import gleam/http/request
 import gleam/httpc
 import gleam/io
 
-pub fn send_appointment_found(
-  topic: String,
-  service: String,
-  doctor: String,
-) -> Nil {
-  send(
-    topic,
-    "Nowe terminy w Luxmedzie!",
-    "Nowe terminy " <> service <> " u lekarza " <> doctor,
-    "urgent",
-    "rotating_light",
+pub type NtfyClient {
+  NtfyClient(
+    send_appointment_found: fn(String, String) -> Nil,
+    send_search_started: fn(String, String) -> Nil,
   )
 }
 
-pub fn send_search_started(
-  topic: String,
-  service: String,
-  doctor: String,
-) -> Nil {
-  send(
-    topic,
-    "Nowe wyszukiwanie w Luxmedzie",
-    "Rozpoczęto wyszukiwanie " <> service <> " u lekarza " <> doctor,
-    "default",
-    "mag",
-  )
+pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
+  case skip {
+    True ->
+      NtfyClient(
+        send_appointment_found: fn(_, _) {
+          io.println("Ntfy: Skipping appointment found (notifications disabled)")
+        },
+        send_search_started: fn(_, _) {
+          io.println("Ntfy: Skipping search started (notifications disabled)")
+        },
+      )
+    False ->
+      NtfyClient(
+        send_appointment_found: fn(service, doctor) {
+          send(
+            topic,
+            "Nowe terminy w Luxmedzie!",
+            "Nowe terminy " <> service <> " u lekarza " <> doctor,
+            "urgent",
+            "rotating_light",
+          )
+        },
+        send_search_started: fn(service, doctor) {
+          send(
+            topic,
+            "Nowe wyszukiwanie w Luxmedzie",
+            "Rozpoczęto wyszukiwanie "
+              <> service
+              <> " u lekarza "
+              <> doctor,
+            "default",
+            "mag",
+          )
+        },
+      )
+  }
 }
 
 fn send(

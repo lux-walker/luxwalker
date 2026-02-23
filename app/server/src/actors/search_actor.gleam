@@ -186,8 +186,8 @@ fn init(
     state.request.doctor,
   )
   io.println("Actor " <> state.id <> ": Registered search")
-  ntfy_client.send_search_started(
-    state.config.ntfy_topic,
+  let ntfy = ntfy_client.create_client(state.config.ntfy_topic, state.config.skip_notifications)
+  ntfy.send_search_started(
     state.request.service,
     state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
   )
@@ -256,14 +256,14 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
       )
       let result = "Results for " <> state.id
       search_registry.request_completed(state.registry, state.id, result)
-      email_client.send_appointment_found_email(
-        state.config.email,
+      let email = email_client.create_client(state.config.email, state.config.skip_notifications)
+      email.send_appointment_found(
         state.request.notification_email,
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
-      ntfy_client.send_appointment_found(
-        state.config.ntfy_topic,
+      let ntfy = ntfy_client.create_client(state.config.ntfy_topic, state.config.skip_notifications)
+      ntfy.send_appointment_found(
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )

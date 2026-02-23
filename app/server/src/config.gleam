@@ -27,7 +27,12 @@ pub type ConfigError {
 }
 
 pub type AppConfig {
-  AppConfig(email: EmailConfig, environment: Environment, ntfy_topic: String)
+  AppConfig(
+    email: EmailConfig,
+    environment: Environment,
+    ntfy_topic: String,
+    skip_notifications: Bool,
+  )
 }
 
 pub fn load() -> Result(AppConfig, ConfigError) {
@@ -39,10 +44,15 @@ pub fn load() -> Result(AppConfig, ConfigError) {
     |> result.replace_error(MissingEnvVar("NTFY_TOPIC")),
   )
   let environment = get_environment()
+  let skip_notifications = case envoy.get("SKIP_NOTIFICATIONS") {
+    Ok("true") -> True
+    _ -> False
+  }
   Ok(AppConfig(
     email: email_config,
     environment: environment,
     ntfy_topic: ntfy_topic,
+    skip_notifications: skip_notifications,
   ))
 }
 
