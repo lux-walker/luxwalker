@@ -1,5 +1,6 @@
 import gcourier/message
 import gcourier/smtp
+import gleam/bool
 import gleam/int
 import gleam/io
 import gleam/option.{Some}
@@ -26,11 +27,14 @@ pub type EmailClient {
 }
 
 pub fn create_client(config: EmailConfig, skip: Bool) -> EmailClient {
+  io.println("Sending emails enabled: " <> skip |> bool.to_string)
   case skip {
     True ->
       EmailClient(
         send_appointment_found: fn(_, _, _) {
-          io.println("Email: Skipping appointment found (notifications disabled)")
+          io.println(
+            "Email: Skipping appointment found (notifications disabled)",
+          )
         },
         send_error: fn(_, _) {
           io.println("Email: Skipping error email (notifications disabled)")

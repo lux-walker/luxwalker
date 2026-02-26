@@ -186,7 +186,11 @@ fn init(
     state.request.doctor,
   )
   io.println("Actor " <> state.id <> ": Registered search")
-  let ntfy = ntfy_client.create_client(state.config.ntfy_topic, state.config.skip_notifications)
+  let ntfy =
+    ntfy_client.create_client(
+      state.config.ntfy_topic,
+      state.config.skip_notifications,
+    )
   ntfy.send_search_started(
     state.request.service,
     state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
@@ -254,19 +258,32 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
       io.println(
         "Actor " <> state.id <> ": Processing complete, stopping actor",
       )
-      let result = "Results for " <> state.id
-      search_registry.request_completed(state.registry, state.id, result)
-      let email = email_client.create_client(state.config.email, state.config.skip_notifications)
+
+      let email =
+        email_client.create_client(
+          state.config.email,
+          state.config.skip_notifications,
+        )
+
       email.send_appointment_found(
         state.request.notification_email,
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
-      let ntfy = ntfy_client.create_client(state.config.ntfy_topic, state.config.skip_notifications)
+
+      let ntfy =
+        ntfy_client.create_client(
+          state.config.ntfy_topic,
+          state.config.skip_notifications,
+        )
+
       ntfy.send_appointment_found(
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
+
+      let result = "Results for " <> state.id
+      search_registry.request_completed(state.registry, state.id, result)
       actor.stop()
     }
     Error(error) -> {

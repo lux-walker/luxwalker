@@ -1,3 +1,4 @@
+import gleam/bool
 import gleam/http
 import gleam/http/request
 import gleam/httpc
@@ -11,11 +12,14 @@ pub type NtfyClient {
 }
 
 pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
+  io.println("Sending notifications enabled: " <> skip |> bool.to_string)
   case skip {
     True ->
       NtfyClient(
         send_appointment_found: fn(_, _) {
-          io.println("Ntfy: Skipping appointment found (notifications disabled)")
+          io.println(
+            "Ntfy: Skipping appointment found (notifications disabled)",
+          )
         },
         send_search_started: fn(_, _) {
           io.println("Ntfy: Skipping search started (notifications disabled)")
@@ -35,11 +39,15 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
         send_search_started: fn(service, doctor) {
           send(
             topic,
+            "Nowe terminy w Luxmedzie!",
+            "Nowe terminy " <> service <> " u lekarza " <> doctor,
+            "urgent",
+            "rotating_light",
+          )
+          send(
+            topic,
             "Nowe wyszukiwanie w Luxmedzie",
-            "Rozpoczęto wyszukiwanie "
-              <> service
-              <> " u lekarza "
-              <> doctor,
+            "Rozpoczęto wyszukiwanie " <> service <> " u lekarza " <> doctor,
             "default",
             "mag",
           )

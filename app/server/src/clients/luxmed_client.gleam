@@ -4,7 +4,6 @@ import gleam/http/request
 import gleam/http/response.{type Response}
 import gleam/httpc
 import gleam/int
-import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option.{type Option, Some}

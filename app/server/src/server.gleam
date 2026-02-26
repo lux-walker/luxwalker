@@ -64,6 +64,8 @@ fn send_ping(environment: config.Environment) -> Nil {
 pub fn main() {
   wisp.configure_logger()
   let app_config = load_config()
+  app_config |> config.print_config()
+
   let assert Ok(registry) = search_registry.start()
   let ctx = AppContext(search_registry: registry, config: app_config)
 
