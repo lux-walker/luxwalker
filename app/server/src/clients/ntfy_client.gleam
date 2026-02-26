@@ -28,6 +28,9 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
     False ->
       NtfyClient(
         send_appointment_found: fn(service, doctor) {
+          io.println(
+            "Ntfy: Sending appointment found notification to " <> topic,
+          )
           send(
             topic,
             "Nowe terminy w Luxmedzie!",
@@ -37,13 +40,7 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
           )
         },
         send_search_started: fn(service, doctor) {
-          send(
-            topic,
-            "Nowe terminy w Luxmedzie!",
-            "Nowe terminy " <> service <> " u lekarza " <> doctor,
-            "urgent",
-            "rotating_light",
-          )
+          io.println("Ntfy: Sending search started notification to " <> topic)
           send(
             topic,
             "Nowe wyszukiwanie w Luxmedzie",
