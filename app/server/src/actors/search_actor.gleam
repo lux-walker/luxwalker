@@ -259,6 +259,17 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
         "Actor " <> state.id <> ": Processing complete, stopping actor",
       )
 
+      let ntfy =
+        ntfy_client.create_client(
+          state.config.ntfy_topic,
+          state.config.skip_notifications,
+        )
+
+      ntfy.send_appointment_found(
+        state.request.service,
+        state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
+      )
+
       let email =
         email_client.create_client(
           state.config.email,
@@ -267,17 +278,6 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
 
       email.send_appointment_found(
         state.request.notification_email,
-        state.request.service,
-        state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
-      )
-
-      let ntfy =
-        ntfy_client.create_client(
-          state.config.ntfy_topic,
-          state.config.skip_notifications,
-        )
-
-      ntfy.send_appointment_found(
         state.request.service,
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
