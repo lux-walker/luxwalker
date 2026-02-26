@@ -1,12 +1,15 @@
 import gcourier/message
 import gcourier/smtp
 import gleam/bool
+import gleam/erlang/process
 import gleam/int
 import gleam/io
 import gleam/option.{Some}
 import gleam/string
 import gleam/time/calendar
 import gleam/time/timestamp
+
+const smtp_timeout_ms = 30_000
 
 pub type EmailConfig {
   EmailConfig(
@@ -83,12 +86,7 @@ fn send_appointment_found_email(
     |> message.set_subject(subject)
     |> message.set_html(body)
 
-  smtp.send(
-    config.smtp_host,
-    config.smtp_port,
-    Some(#(config.username, config.password)),
-    email,
-  )
+  send_with_timeout(config, email)
 }
 
 fn format_current_time() -> String {
@@ -128,10 +126,24 @@ fn send_error_email(
     |> message.set_subject(subject)
     |> message.set_html(body)
 
-  smtp.send(
-    config.smtp_host,
-    config.smtp_port,
-    Some(#(config.username, config.password)),
-    email,
-  )
+  send_with_timeout(config, email)
+}
+
+fn send_with_timeout(config: EmailConfig, email: message.Message) -> Nil {
+  let subj = process.new_subject()
+
+  process.spawn_unlinked(fn() {
+    smtp.send(
+      config.smtp_host,
+      config.smtp_port,
+      Some(#(config.username, config.password)),
+      email,
+    )
+    process.send(subj, Nil)
+  })
+
+  case process.receive(subj, smtp_timeout_ms) {
+    Ok(Nil) -> io.println("Email: Sent successfully")
+    Error(Nil) -> io.println("Email: Timed out after 30s")
+  }
 }
