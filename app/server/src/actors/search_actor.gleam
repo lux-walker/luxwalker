@@ -284,6 +284,7 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
 
       let result = "Results for " <> state.id
       search_registry.request_completed(state.registry, state.id, result)
+      io.println("Actor " <> state.id <> ": Request completed, stopping actor")
       actor.stop()
     }
     Error(error) -> {
