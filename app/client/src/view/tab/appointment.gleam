@@ -3,44 +3,35 @@ import gleam/list
 import lustre/attribute.{class, href, placeholder, type_, value}
 import lustre/element.{type Element, text}
 import lustre/element/html.{
-  a, button, div, form, h1, h2, input, label, nav, p, span, strong,
+  a, button, div, form, h2, input, label, nav, p, span, strong,
 }
 import lustre/event.{on_input, on_submit}
+import routing.{ActiveSearches, CreateSearch}
 import shared/types.{
-  type AppointmentRequest, type SearchStatusDisplay, type SearchSummary,
+  type CreateAppointmentRequest, type SearchStatusDisplay, type SearchSummary,
   Completed, NoResult, Processing,
 }
-
 import ui_types.{
-  type FormField, type Model, type Msg, type Route, ActiveSearches, CreateSearch,
-  DoctorFirstName, DoctorLastName, Form, Login, NotificationEmail, Password,
-  Service, Submit, UpdateField,
+  type FormField, type Model, type Msg, AppointmentForm, DoctorFirstName,
+  DoctorLastName, NotificationEmail, Password, Service, Submit, UpdateField,
 }
 
-fn divc(classes: String, children: List(Element(Msg))) -> Element(Msg) {
-  div([class(classes)], children)
+pub fn view(active_tab: routing.ActiveTab, model: Model) -> Element(Msg) {
+  let content = case active_tab {
+    CreateSearch -> view_form(model.form)
+    ActiveSearches -> view_searches(model.searches)
+  }
+  div([], [view_tabs(active_tab, model.user_email), content])
 }
 
-pub fn view(model: Model) -> Element(Msg) {
-  divc("min-h-screen bg-gradient-to-br from-slate-50 to-slate-100", [
-    divc("max-w-2xl mx-auto px-4 py-10", [
-      h1([class("text-3xl font-bold text-slate-900")], [text("Luxwalker")]),
-      p([class("text-slate-500 mt-1 mb-8")], [
-        text("Medical appointment search"),
-      ]),
-      view_tabs(model.route),
-      case model.route {
-        CreateSearch -> view_form(model.form)
-        ActiveSearches -> view_searches(model.searches)
-      },
-    ]),
-  ])
-}
-
-fn view_tabs(current_route: Route) -> Element(Msg) {
+fn view_tabs(active_tab: routing.ActiveTab, user_email: String) -> Element(Msg) {
   nav([class("flex border-b border-slate-200 mb-8")], [
-    view_tab("Active Searches", "/", current_route == ActiveSearches),
-    view_tab("Create Search", "/create", current_route == CreateSearch),
+    view_tab("Active Searches", "/" <> user_email, active_tab == ActiveSearches),
+    view_tab(
+      "Create Search",
+      "/" <> user_email <> "/create",
+      active_tab == CreateSearch,
+    ),
   ])
 }
 
@@ -56,18 +47,17 @@ fn view_tab(lbl: String, path: String, is_active: Bool) -> Element(Msg) {
   a([href(path), class(classes)], [text(lbl)])
 }
 
-fn view_form(search_form: AppointmentRequest) -> Element(Msg) {
+fn view_form(search_form: CreateAppointmentRequest) -> Element(Msg) {
   form(
     [
       class("bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8"),
-      on_submit(fn(_) { Form(Submit) }),
+      on_submit(fn(_) { AppointmentForm(Submit) }),
     ],
     [
       h2([class("text-lg font-semibold text-slate-800 mb-4")], [
         text("New Search"),
       ]),
       divc("space-y-4", [
-        view_input("Login", "text", search_form.login, Login),
         view_input("Password", "password", search_form.password, Password),
         view_input("Service", "text", search_form.service, Service),
         divc("grid grid-cols-1 sm:grid-cols-2 gap-4", [
@@ -102,28 +92,6 @@ fn view_form(search_form: AppointmentRequest) -> Element(Msg) {
       ),
     ],
   )
-}
-
-fn view_input(
-  lbl: String,
-  input_type: String,
-  val: String,
-  field: FormField,
-) -> Element(Msg) {
-  div([], [
-    label([class("block text-sm font-medium text-slate-700 mb-1")], [
-      text(lbl),
-    ]),
-    input([
-      type_(input_type),
-      value(val),
-      placeholder(lbl),
-      class(
-        "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400",
-      ),
-      on_input(fn(v) { Form(UpdateField(field, v)) }),
-    ]),
-  ])
 }
 
 fn view_searches(searches: List(SearchSummary)) -> Element(Msg) {
@@ -206,4 +174,30 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
         [text("Completed: " <> result)],
       )
   }
+}
+
+fn view_input(
+  lbl: String,
+  input_type: String,
+  val: String,
+  field: FormField,
+) -> Element(Msg) {
+  div([], [
+    label([class("block text-sm font-medium text-slate-700 mb-1")], [
+      text(lbl),
+    ]),
+    input([
+      type_(input_type),
+      value(val),
+      placeholder(lbl),
+      class(
+        "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400",
+      ),
+      on_input(fn(v) { AppointmentForm(UpdateField(field, v)) }),
+    ]),
+  ])
+}
+
+fn divc(classes: String, children: List(Element(Msg))) -> Element(Msg) {
+  div([class(classes)], children)
 }

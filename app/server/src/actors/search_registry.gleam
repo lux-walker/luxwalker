@@ -20,6 +20,7 @@ pub type SearchRecord {
     service: String,
     doctor: Doctor,
     timestamp: Timestamp,
+    user_email: String,
   )
 }
 
@@ -42,11 +43,15 @@ fn pad2(value: Int) -> String {
 }
 
 pub type Message {
-  Register(id: String, service: String, doctor: Doctor)
+  Register(id: String, service: String, doctor: Doctor, user_email: String)
   AttemptFailed(id: String, attempts: Int, last_message: String)
   Completed(id: String, result: String)
   GetResult(id: String, reply_with: process.Subject(SearchRecord))
   GetAllResults(reply_with: process.Subject(Dict(String, SearchRecord)))
+  GetUserResults(
+    user_email: String,
+    reply_with: process.Subject(Dict(String, SearchRecord)),
+  )
 }
 
 pub type State {
@@ -70,8 +75,9 @@ pub fn register_search(
   id: String,
   service: String,
   doctor: Doctor,
+  user_email: String,
 ) -> Nil {
-  process.send(registry, Register(id, service, doctor))
+  process.send(registry, Register(id, service, doctor, user_email))
 }
 
 pub fn request_attempt_failed(
@@ -110,9 +116,19 @@ pub fn get_all_results(
   process.receive(reply_subject, timeout_ms)
 }
 
+pub fn get_user_results(
+  registry: process.Subject(Message),
+  user_email: String,
+  timeout_ms: Int,
+) -> Result(Dict(String, SearchRecord), Nil) {
+  let reply_subject = process.new_subject()
+  process.send(registry, GetUserResults(user_email, reply_subject))
+  process.receive(reply_subject, timeout_ms)
+}
+
 fn handle_message(state: State, message: Message) -> actor.Next(State, Message) {
   case message {
-    Register(id, service, doctor) -> {
+    Register(id, service, doctor, user_email) -> {
       io.println("Registry: Registered search " <> id)
       let record =
         SearchRecord(
@@ -120,6 +136,7 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
           service: service,
           doctor: doctor,
           timestamp: timestamp.system_time(),
+          user_email: user_email,
         )
       let new_results = dict.insert(state.results, id, record)
       actor.continue(State(results: new_results))
@@ -168,6 +185,7 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
             service: "",
             doctor: types.Doctor(first_name: "", last_name: ""),
             timestamp: timestamp.system_time(),
+            user_email: "",
           )
       }
       process.send(reply_subject, record)
@@ -175,6 +193,14 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
     }
     GetAllResults(reply_subject) -> {
       process.send(reply_subject, state.results)
+      actor.continue(state)
+    }
+    GetUserResults(user_email, reply_subject) -> {
+      let filtered =
+        dict.filter(state.results, fn(_id, record) {
+          record.user_email == user_email
+        })
+      process.send(reply_subject, filtered)
       actor.continue(state)
     }
   }

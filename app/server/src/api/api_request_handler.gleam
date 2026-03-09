@@ -4,9 +4,11 @@ import app_context.{type AppContext}
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/http.{Get, Post}
+import gleam/http/request
 import gleam/io
 import gleam/json
 import shared/types
+import handlers/search_handler
 import wisp
 import youid/uuid
 
@@ -17,10 +19,14 @@ pub fn handle_http_api_requests(
 ) -> wisp.Response {
   case req.method, path_segments {
     Post, ["walker"] -> handle_walker_post(ctx, req)
-    Get, ["walker"] -> handle_walker_get(ctx)
+    Get, ["walker"] -> handle_walker_get(ctx, req)
     Get, ["ping"] -> handle_ping()
     _, _ -> wisp.not_found()
   }
+}
+
+fn get_user_email(req: wisp.Request) -> Result(String, Nil) {
+  request.get_header(req, "x-user-email")
 }
 
 fn handle_ping() -> wisp.Response {
@@ -33,9 +39,36 @@ fn handle_ping() -> wisp.Response {
 }
 
 fn handle_walker_post(ctx: AppContext, req: wisp.Request) -> wisp.Response {
+  case get_user_email(req) {
+    Error(Nil) ->
+      wisp.bad_request("Missing x-user-email header")
+      |> wisp.json_body(
+        json.to_string(
+          json.object([
+            #("error", json.string("Missing x-user-email header")),
+          ]),
+        ),
+      )
+    Ok(user_email) -> handle_walker_post_for_user(ctx, req, user_email)
+  }
+}
+
+fn handle_walker_post_for_user(
+  ctx: AppContext,
+  req: wisp.Request,
+  user_email: String,
+) -> wisp.Response {
   use json_body <- wisp.require_json(req)
-  case decode.run(json_body, types.appointment_request_decoder()) {
-    Ok(request) -> {
+  case decode.run(json_body, types.create_appointment_request_decoder()) {
+    Ok(create_req) -> {
+      let request =
+        search_handler.AppointmentRequest(
+          login: user_email,
+          password: create_req.password,
+          service: create_req.service,
+          doctor: create_req.doctor,
+          notification_email: create_req.notification_email,
+        )
       let id = uuid.v4_string()
       case
         search_actor.create_and_call(ctx.search_registry, id, request, ctx.config, 5000)
@@ -100,13 +133,32 @@ fn search_status_to_json(status: search_registry.SearchStatus) -> json.Json {
   }
 }
 
-fn handle_walker_get(ctx: AppContext) -> wisp.Response {
-  case search_registry.get_all_results(ctx.search_registry, 5000) {
+fn handle_walker_get(ctx: AppContext, req: wisp.Request) -> wisp.Response {
+  case get_user_email(req) {
+    Error(Nil) -> {
+      wisp.bad_request("Missing x-user-email header")
+      |> wisp.json_body(
+        json.to_string(
+          json.object([
+            #("error", json.string("Missing x-user-email header")),
+          ]),
+        ),
+      )
+    }
+    Ok(user_email) -> handle_walker_get_for_user(ctx, user_email)
+  }
+}
+
+fn handle_walker_get_for_user(
+  ctx: AppContext,
+  user_email: String,
+) -> wisp.Response {
+  case search_registry.get_user_results(ctx.search_registry, user_email, 5000) {
     Ok(results) -> {
       let searches_json =
         dict.to_list(results)
         |> json.array(fn(entry) {
-          let #(id, search_registry.SearchRecord(status, service, doctor, ts)) = entry
+          let #(id, search_registry.SearchRecord(status, service, doctor, ts, _)) = entry
           json.object([
             #("id", json.string(id)),
             #("service", json.string(service)),

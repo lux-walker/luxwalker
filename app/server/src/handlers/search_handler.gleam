@@ -10,7 +10,29 @@ import gleam/string
 import gleam/time/calendar
 import gleam/time/duration
 import gleam/time/timestamp
-import shared/types.{type AppointmentRequest}
+import shared/types.{type Doctor as SharedDoctor}
+
+pub type AppointmentRequest {
+  AppointmentRequest(
+    login: String,
+    password: String,
+    service: String,
+    doctor: SharedDoctor,
+    notification_email: String,
+  )
+}
+
+pub fn print_request(request: AppointmentRequest) -> Nil {
+  io.println("=== Appointment Request ===")
+  io.println("Login: " <> request.login)
+  io.println("Password: *****")
+  io.println("Service: " <> request.service)
+  io.println(
+    "Doctor: " <> request.doctor.first_name <> " " <> request.doctor.last_name,
+  )
+  io.println("Email: " <> request.notification_email)
+  io.println("===========================")
+}
 
 pub type SearchError {
   AuthenticationFailed

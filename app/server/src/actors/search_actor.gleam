@@ -7,13 +7,12 @@ import gleam/erlang/process
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/option
 import gleam/otp/actor
 import gleam/result
 import gleam/time/calendar
 import gleam/time/timestamp
-import handlers/search_handler
-import shared/types.{type AppointmentRequest}
-import types/appointment_request
+import handlers/search_handler.{type AppointmentRequest}
 
 const one_minute_ms = 60_000
 
@@ -41,7 +40,59 @@ pub type State {
     request: AppointmentRequest,
     registry: process.Subject(search_registry.Message),
     config: AppConfig,
+    schedule: fn() -> Int,
   )
+}
+
+fn production_schedule_table() -> List(String) {
+  [
+    "01:00",
+    "05:00",
+    "05:30",
+    "05:59",
+    "06:00",
+    "06:01",
+    "06:02",
+    "06:03",
+    "06:04",
+    "06:05",
+    "06:06",
+    "06:07",
+    "06:08",
+    "06:09",
+    "06:10",
+    "06:15",
+    "06:20",
+    "06:30",
+    "06:45",
+    "07:00",
+    "07:15",
+    "07:30",
+    "07:45",
+    "08:00",
+    "08:15",
+    "08:30",
+    "08:45",
+    "09:00",
+    "10:00",
+    "11:00",
+    "12:00",
+    "13:00",
+    "14:00",
+    "15:00",
+    "16:00",
+    "17:00",
+    "18:00",
+    "19:00",
+    "20:00",
+    "21:00",
+    "22:00",
+    "23:00",
+  ]
+}
+
+fn production_day_schedule() -> Int {
+  todo
 }
 
 fn production_timeout_ms() -> Int {
@@ -66,7 +117,7 @@ fn production_timeout_ms() -> Int {
 fn send_continue_after(state: State) {
   let timeout_ms = case state.config.environment {
     Development -> one_minute_ms
-    Production -> production_timeout_ms()
+    Production -> state.schedule()
   }
 
   process.send_after(state.self, timeout_ms, ContinueProcessing)
@@ -154,6 +205,7 @@ pub fn create_actor(
       request: request,
       registry: registry,
       config: config,
+      schedule: production_timeout_ms,
     )
   let result =
     actor.new(initial_state)
@@ -178,12 +230,13 @@ fn init(
   self: process.Subject(Message),
 ) -> actor.Next(State, Message) {
   io.println("Actor " <> state.id <> ": Initialized")
-  appointment_request.print(state.request)
+  search_handler.print_request(state.request)
   search_registry.register_search(
     state.registry,
     state.id,
     state.request.service,
     state.request.doctor,
+    state.request.login,
   )
   io.println("Actor " <> state.id <> ": Registered search")
   let ntfy =

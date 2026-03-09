@@ -1,14 +1,12 @@
+import routing.{type Route}
 import rsvp
-import shared/types.{type AppointmentRequest, type SearchSummary, AppointmentRequest, Doctor}
-
-pub type Route {
-  CreateSearch
-  ActiveSearches
+import shared/types.{
+  type CreateAppointmentRequest, type SearchSummary, CreateAppointmentRequest,
+  Doctor,
 }
 
-pub fn empty_form() -> AppointmentRequest {
-  AppointmentRequest(
-    login: "",
+pub fn empty_form() -> CreateAppointmentRequest {
+  CreateAppointmentRequest(
     password: "",
     service: "",
     doctor: Doctor(first_name: "", last_name: ""),
@@ -17,11 +15,15 @@ pub fn empty_form() -> AppointmentRequest {
 }
 
 pub type Model {
-  Model(route: Route, searches: List(SearchSummary), form: AppointmentRequest)
+  Model(
+    route: Route,
+    searches: List(SearchSummary),
+    form: CreateAppointmentRequest,
+    user_email: String,
+  )
 }
 
 pub type FormField {
-  Login
   Password
   Service
   DoctorFirstName
@@ -30,30 +32,46 @@ pub type FormField {
 }
 
 pub fn update_field(
-  form: AppointmentRequest,
+  form: CreateAppointmentRequest,
   field: FormField,
   value: String,
-) -> AppointmentRequest {
+) -> CreateAppointmentRequest {
   case field {
-    Login -> AppointmentRequest(..form, login: value)
-    Password -> AppointmentRequest(..form, password: value)
-    Service -> AppointmentRequest(..form, service: value)
+    Password -> CreateAppointmentRequest(..form, password: value)
+    Service -> CreateAppointmentRequest(..form, service: value)
     DoctorFirstName ->
-      AppointmentRequest(..form, doctor: Doctor(..form.doctor, first_name: value))
+      CreateAppointmentRequest(
+        ..form,
+        doctor: Doctor(..form.doctor, first_name: value),
+      )
     DoctorLastName ->
-      AppointmentRequest(..form, doctor: Doctor(..form.doctor, last_name: value))
-    NotificationEmail -> AppointmentRequest(..form, notification_email: value)
+      CreateAppointmentRequest(
+        ..form,
+        doctor: Doctor(..form.doctor, last_name: value),
+      )
+    NotificationEmail ->
+      CreateAppointmentRequest(..form, notification_email: value)
   }
 }
 
-pub type FormAction {
+pub type AppointmentFormAction {
   UpdateField(field: FormField, value: String)
   Submit
 }
 
+pub type HttpRequest {
+  SearchRequestSubmitted(Result(String, rsvp.Error))
+  SearchesFetched(Result(List(SearchSummary), rsvp.Error))
+}
+
+pub type EmailFormAction {
+  EmailInput(String)
+  EmailSubmit
+}
+
 pub type Msg {
   OnRouteChange(Route)
-  Form(FormAction)
-  SearchHttpRequestSubmitted(Result(String, rsvp.Error))
-  SearchesFetched(Result(List(SearchSummary), rsvp.Error))
+  OnHttpRequest(HttpRequest)
+  AppointmentForm(AppointmentFormAction)
+  EmailForm(EmailFormAction)
 }

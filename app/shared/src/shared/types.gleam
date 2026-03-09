@@ -5,9 +5,8 @@ pub type Doctor {
   Doctor(first_name: String, last_name: String)
 }
 
-pub type AppointmentRequest {
-  AppointmentRequest(
-    login: String,
+pub type CreateAppointmentRequest {
+  CreateAppointmentRequest(
     password: String,
     service: String,
     doctor: Doctor,
@@ -15,9 +14,10 @@ pub type AppointmentRequest {
   )
 }
 
-pub fn encode_appointment_request(request: AppointmentRequest) -> json.Json {
+pub fn encode_create_appointment_request(
+  request: CreateAppointmentRequest,
+) -> json.Json {
   json.object([
-    #("login", json.string(request.login)),
     #("password", json.string(request.password)),
     #("service", json.string(request.service)),
     #(
@@ -31,8 +31,9 @@ pub fn encode_appointment_request(request: AppointmentRequest) -> json.Json {
   ])
 }
 
-pub fn appointment_request_decoder() -> decode.Decoder(AppointmentRequest) {
-  use login <- decode.field("login", decode.string)
+pub fn create_appointment_request_decoder() -> decode.Decoder(
+  CreateAppointmentRequest,
+) {
   use password <- decode.field("password", decode.string)
   use service <- decode.field("service", decode.string)
   use doctor <- decode.field("doctor", {
@@ -41,8 +42,7 @@ pub fn appointment_request_decoder() -> decode.Decoder(AppointmentRequest) {
     decode.success(Doctor(first_name:, last_name:))
   })
   use notification_email <- decode.field("notificationEmail", decode.string)
-  decode.success(AppointmentRequest(
-    login:,
+  decode.success(CreateAppointmentRequest(
     password:,
     service:,
     doctor:,
@@ -124,14 +124,11 @@ fn search_status_decoder() -> decode.Decoder(SearchStatusDisplay) {
 pub fn search_summary_decoder() -> decode.Decoder(SearchSummary) {
   use id <- decode.field("id", decode.string)
   use service <- decode.field("service", decode.string)
-  use #(doctor_first_name, doctor_last_name) <- decode.field(
-    "doctor",
-    {
-      use first <- decode.field("firstName", decode.string)
-      use last <- decode.field("lastName", decode.string)
-      decode.success(#(first, last))
-    },
-  )
+  use #(doctor_first_name, doctor_last_name) <- decode.field("doctor", {
+    use first <- decode.field("firstName", decode.string)
+    use last <- decode.field("lastName", decode.string)
+    decode.success(#(first, last))
+  })
   use status <- decode.field("status", search_status_decoder())
   use timestamp <- decode.field("timestamp", decode.string)
   decode.success(SearchSummary(

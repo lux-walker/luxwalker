@@ -1,85 +1,102 @@
-import gleam/uri
+import gleam/option.{None}
 import lustre/effect.{type Effect}
 import modem
-import rsvp
-import shared/types.{type AppointmentRequest}
+import requests
+import routing.{ActiveSearches, CreateSearch, EmailRoute, TabRoute}
 import ui_types.{
-  type Model, type Msg, type Route, ActiveSearches, CreateSearch, Form, Model,
-  OnRouteChange, SearchHttpRequestSubmitted as CreateRequestSubmitted,
-  SearchesFetched as GetSearchesFetched, Submit, UpdateField,
-}
-
-fn on_url_change(uri: uri.Uri) -> Msg {
-  case uri.path_segments(uri.path) {
-    ["create"] -> OnRouteChange(CreateSearch)
-    _ -> OnRouteChange(ActiveSearches)
-  }
-}
-
-fn get_initial_route() -> Route {
-  case modem.initial_uri() {
-    Ok(uri) ->
-      case uri.path_segments(uri.path) {
-        ["create"] -> CreateSearch
-        _ -> ActiveSearches
-      }
-    Error(_) -> ActiveSearches
-  }
+  type Model, type Msg, AppointmentForm as AppointmentForm,
+  EmailForm as EmailForm, EmailInput, EmailSubmit, Model, OnHttpRequest,
+  OnRouteChange, Submit, UpdateField,
 }
 
 pub fn init(_flags) -> #(Model, Effect(Msg)) {
-  let initial_route = get_initial_route()
+  let routing.RouteState(route: initial_route, email:) =
+    routing.get_initial_route_state()
+  let modem_init = modem.init(url_init_effect)
   let initial_effects = case initial_route {
-    ActiveSearches ->
-      effect.batch([modem.init(on_url_change), fetch_searches()])
-    CreateSearch -> modem.init(on_url_change)
+    TabRoute(ActiveSearches) ->
+      effect.batch([modem_init, requests.fetch_searches(email)])
+    TabRoute(CreateSearch) -> modem_init
+    EmailRoute -> modem_init
   }
   #(
-    Model(route: initial_route, searches: [], form: ui_types.empty_form()),
+    Model(
+      route: initial_route,
+      searches: [],
+      form: ui_types.empty_form(),
+      user_email: email,
+    ),
     initial_effects,
   )
 }
 
-pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
-  case msg {
-    OnRouteChange(ActiveSearches) -> #(
-      Model(..model, route: ActiveSearches),
-      fetch_searches(),
+fn url_init_effect(uri) -> Msg {
+  OnRouteChange(routing.get_route_from_uri(uri))
+}
+
+fn on_route_change(model: Model, route: routing.Route) -> #(Model, Effect(Msg)) {
+  case route {
+    TabRoute(ActiveSearches) -> #(
+      Model(..model, route: TabRoute(ActiveSearches)),
+      requests.fetch_searches(model.user_email),
     )
-    OnRouteChange(route) -> #(Model(..model, route: route), effect.none())
-    Form(UpdateField(field, value)) -> #(
-      Model(..model, form: ui_types.update_field(model.form, field, value)),
+    TabRoute(CreateSearch) -> #(
+      Model(..model, route: TabRoute(CreateSearch)),
       effect.none(),
     )
-    Form(Submit) -> #(
-      Model(..model, form: ui_types.empty_form()),
-      post_search(model.form),
-    )
-    CreateRequestSubmitted(Ok(_)) -> #(model, fetch_searches())
-    CreateRequestSubmitted(Error(_)) -> #(model, effect.none())
-    GetSearchesFetched(Ok(searches)) -> #(
-      Model(..model, searches: searches),
-      effect.none(),
-    )
-    GetSearchesFetched(Error(_)) -> #(model, effect.none())
+    EmailRoute -> #(Model(..model, route: EmailRoute), effect.none())
   }
 }
 
-fn fetch_searches() -> Effect(Msg) {
-  rsvp.get(
-    "/api/walker",
-    rsvp.expect_json(types.searches_decoder(), GetSearchesFetched),
-  )
+fn on_appointment_form_change(
+  action: ui_types.AppointmentFormAction,
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  case action {
+    UpdateField(field, value) -> #(
+      Model(..model, form: ui_types.update_field(model.form, field, value)),
+      effect.none(),
+    )
+    Submit -> #(
+      Model(..model, form: ui_types.empty_form()),
+      requests.post_search(model.form, model.user_email),
+    )
+  }
 }
 
-fn post_search(form: AppointmentRequest) -> Effect(Msg) {
-  let body = types.encode_appointment_request(form)
-  rsvp.post(
-    "/api/walker",
-    body,
-    rsvp.expect_json(
-      types.post_search_response_decoder(),
-      CreateRequestSubmitted,
-    ),
-  )
+fn on_http_request(
+  model: Model,
+  request: ui_types.HttpRequest,
+) -> #(Model, Effect(Msg)) {
+  case request {
+    ui_types.SearchRequestSubmitted(Ok(_)) -> #(
+      model,
+      requests.fetch_searches(model.user_email),
+    )
+    ui_types.SearchRequestSubmitted(Error(_)) -> #(model, effect.none())
+    ui_types.SearchesFetched(Ok(searches)) -> #(
+      Model(..model, searches: searches),
+      effect.none(),
+    )
+    ui_types.SearchesFetched(Error(_)) -> #(model, effect.none())
+  }
+}
+
+pub fn on_email_form_change(
+  action: ui_types.EmailFormAction,
+  model: Model,
+) -> #(Model, Effect(Msg)) {
+  case action {
+    EmailInput(value) -> #(Model(..model, user_email: value), effect.none())
+    EmailSubmit -> #(model, modem.push("/" <> model.user_email, None, None))
+  }
+}
+
+pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
+  case msg {
+    OnRouteChange(route) -> on_route_change(model, route)
+    OnHttpRequest(http_request) -> on_http_request(model, http_request)
+    AppointmentForm(action) -> on_appointment_form_change(action, model)
+    EmailForm(action) -> on_email_form_change(action, model)
+  }
 }
