@@ -11,7 +11,7 @@ import shared/types.{type Doctor}
 pub type SearchStatus {
   NoResult
   Processing(attempts: Int, last_message: String)
-  HasResult(result: String)
+  HasResult(terms: List(types.TermResult))
 }
 
 pub type SearchRecord {
@@ -45,7 +45,7 @@ fn pad2(value: Int) -> String {
 pub type Message {
   Register(id: String, service: String, doctor: Doctor, user_email: String)
   AttemptFailed(id: String, attempts: Int, last_message: String)
-  Completed(id: String, result: String)
+  Completed(id: String, terms: List(types.TermResult))
   GetResult(id: String, reply_with: process.Subject(SearchRecord))
   GetAllResults(reply_with: process.Subject(Dict(String, SearchRecord)))
   GetUserResults(
@@ -92,9 +92,9 @@ pub fn request_attempt_failed(
 pub fn request_completed(
   registry: process.Subject(Message),
   id: String,
-  result: String,
+  terms: List(types.TermResult),
 ) -> Nil {
-  process.send(registry, Completed(id, result))
+  process.send(registry, Completed(id, terms))
 }
 
 pub fn get_result(
@@ -159,14 +159,14 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
       actor.continue(State(results: new_results))
     }
 
-    Completed(id, result) -> {
+    Completed(id, terms) -> {
       io.println("Registry: Completed search for " <> id)
       let new_results = case dict.get(state.results, id) {
         Ok(record) -> {
           let updated_record =
             SearchRecord(
               ..record,
-              status: HasResult(result),
+              status: HasResult(terms),
               timestamp: timestamp.system_time(),
             )
           dict.insert(state.results, id, updated_record)

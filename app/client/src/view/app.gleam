@@ -1,9 +1,10 @@
 import lustre/attribute.{class}
 import lustre/element.{type Element, text}
 import lustre/element/html.{div, h1, p}
-import routing.{EmailRoute, TabRoute}
+import routing.{EmailRoute, RequestDetailsRoute, TabRoute}
 import ui_types.{type Model, type Msg}
 import view/email_entry
+import view/search_result
 import view/tab/appointment
 
 fn divc(classes: String, children: List(Element(Msg))) -> Element(Msg) {
@@ -20,6 +21,7 @@ pub fn view(model: Model) -> Element(Msg) {
       case model.route {
         EmailRoute -> email_entry.view(model)
         TabRoute(active_tab) -> appointment.view(active_tab, model)
+        RequestDetailsRoute(id) -> search_result.view(id, model)
       },
     ]),
   ])

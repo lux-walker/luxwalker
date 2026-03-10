@@ -1,8 +1,10 @@
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import lustre/effect.{type Effect}
 import modem
 import requests
-import routing.{ActiveSearches, CreateSearch, EmailRoute, TabRoute}
+import routing.{
+  ActiveSearches, CreateSearch, EmailRoute, RequestDetailsRoute, TabRoute,
+}
 import ui_types.{
   type Model, type Msg, AppointmentForm as AppointmentForm,
   EmailForm as EmailForm, EmailInput, EmailSubmit, Model, OnHttpRequest,
@@ -17,6 +19,12 @@ pub fn init(_flags) -> #(Model, Effect(Msg)) {
     TabRoute(ActiveSearches) ->
       effect.batch([modem_init, requests.fetch_searches(email)])
     TabRoute(CreateSearch) -> modem_init
+    RequestDetailsRoute(_) ->
+      effect.batch([
+        modem_init,
+        requests.fetch_searches(email),
+        requests.fetch_config(),
+      ])
     EmailRoute -> modem_init
   }
   #(
@@ -25,6 +33,7 @@ pub fn init(_flags) -> #(Model, Effect(Msg)) {
       searches: [],
       form: ui_types.empty_form(),
       user_email: email,
+      app_settings: None,
     ),
     initial_effects,
   )
@@ -43,6 +52,10 @@ fn on_route_change(model: Model, route: routing.Route) -> #(Model, Effect(Msg)) 
     TabRoute(CreateSearch) -> #(
       Model(..model, route: TabRoute(CreateSearch)),
       effect.none(),
+    )
+    RequestDetailsRoute(id) -> #(
+      Model(..model, route: RequestDetailsRoute(id)),
+      requests.fetch_config(),
     )
     EmailRoute -> #(Model(..model, route: EmailRoute), effect.none())
   }
@@ -79,6 +92,11 @@ fn on_http_request(
       effect.none(),
     )
     ui_types.SearchesFetched(Error(_)) -> #(model, effect.none())
+    ui_types.ConfigFetched(Ok(settings)) -> #(
+      Model(..model, app_settings: Some(settings)),
+      effect.none(),
+    )
+    ui_types.ConfigFetched(Error(_)) -> #(model, effect.none())
   }
 }
 
@@ -88,7 +106,8 @@ pub fn on_email_form_change(
 ) -> #(Model, Effect(Msg)) {
   case action {
     EmailInput(value) -> #(Model(..model, user_email: value), effect.none())
-    EmailSubmit -> #(model, modem.push("/" <> model.user_email, None, None))
+    EmailSubmit ->
+      #(model, modem.push("/" <> model.user_email <> "/searches", None, None))
   }
 }
 

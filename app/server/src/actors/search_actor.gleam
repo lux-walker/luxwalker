@@ -13,6 +13,7 @@ import gleam/result
 import gleam/time/calendar
 import gleam/time/timestamp
 import handlers/search_handler.{type AppointmentRequest}
+import shared/types.{type TermResult, TermResult}
 
 const one_minute_ms = 60_000
 
@@ -252,15 +253,20 @@ fn init(
   actor.continue(State(..state, self: self))
 }
 
-fn terms_to_string(
+fn terms_to_result_list(
   terms: List(luxmed_client.TermForDay),
-  state: State,
-) -> String {
-  "Results for "
-  <> state.id
-  <> " found "
-  <> list.length(terms) |> int.to_string
-  <> " terms"
+) -> List(TermResult) {
+  terms
+  |> list.flat_map(fn(day) { day.terms })
+  |> list.map(fn(term) {
+    TermResult(
+      clinic: term.clinic,
+      date_time_from: term.date_time_from,
+      date_time_to: term.date_time_to,
+      doctor_first_name: option.unwrap(term.doctor.first_name, ""),
+      doctor_last_name: option.unwrap(term.doctor.last_name, ""),
+    )
+  })
 }
 
 fn search(
@@ -272,9 +278,10 @@ fn search(
   case search_handler.handle_search(state.request) {
     Ok(terms) -> {
       io.println("Actor " <> state.id <> ": Search complete, stopping actor")
-      let result = terms |> terms_to_string(state)
-      search_registry.request_completed(state.registry, state.id, result)
-      process.send(reply_subject, SearchComplete(result))
+      let term_results = terms_to_result_list(terms)
+      search_registry.request_completed(state.registry, state.id, term_results)
+      let count = list.length(term_results) |> int.to_string
+      process.send(reply_subject, SearchComplete("Found " <> count <> " terms"))
       actor.stop()
     }
     Error(error) ->
@@ -307,7 +314,7 @@ fn search(
 fn continue_processing(state: State) -> actor.Next(State, Message) {
   io.println("Actor " <> state.id <> ": Processing again...")
   case search_handler.handle_search(state.request) {
-    Ok(_) -> {
+    Ok(terms) -> {
       io.println(
         "Actor " <> state.id <> ": Processing complete, stopping actor",
       )
@@ -335,8 +342,8 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
         state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
       )
 
-      let result = "Results for " <> state.id
-      search_registry.request_completed(state.registry, state.id, result)
+      let term_results = terms_to_result_list(terms)
+      search_registry.request_completed(state.registry, state.id, term_results)
       io.println("Actor " <> state.id <> ": Request completed, stopping actor")
       actor.stop()
     }

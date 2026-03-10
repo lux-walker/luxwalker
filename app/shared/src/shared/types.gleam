@@ -50,10 +50,30 @@ pub fn create_appointment_request_decoder() -> decode.Decoder(
   ))
 }
 
+pub type AppSettings {
+  AppSettings(environment: String, skip_notifications: Bool)
+}
+
+pub fn app_settings_decoder() -> decode.Decoder(AppSettings) {
+  use environment <- decode.field("environment", decode.string)
+  use skip_notifications <- decode.field("skipNotifications", decode.bool)
+  decode.success(AppSettings(environment:, skip_notifications:))
+}
+
+pub type TermResult {
+  TermResult(
+    clinic: String,
+    date_time_from: String,
+    date_time_to: String,
+    doctor_first_name: String,
+    doctor_last_name: String,
+  )
+}
+
 pub type SearchStatusDisplay {
   NoResult
   Processing(attempts: Int, last_message: String)
-  Completed(result: String)
+  Completed(terms: List(TermResult))
 }
 
 pub type SearchSummary {
@@ -69,6 +89,16 @@ pub type SearchSummary {
 
 // -- JSON Encoders --
 
+pub fn encode_term_result(term: TermResult) -> json.Json {
+  json.object([
+    #("clinic", json.string(term.clinic)),
+    #("dateTimeFrom", json.string(term.date_time_from)),
+    #("dateTimeTo", json.string(term.date_time_to)),
+    #("doctorFirstName", json.string(term.doctor_first_name)),
+    #("doctorLastName", json.string(term.doctor_last_name)),
+  ])
+}
+
 pub fn encode_search_status(status: SearchStatusDisplay) -> json.Json {
   case status {
     NoResult -> json.object([#("status", json.string("no_result"))])
@@ -78,10 +108,10 @@ pub fn encode_search_status(status: SearchStatusDisplay) -> json.Json {
         #("attempts", json.int(attempts)),
         #("last_message", json.string(last_message)),
       ])
-    Completed(result) ->
+    Completed(terms) ->
       json.object([
         #("status", json.string("completed")),
-        #("result", json.string(result)),
+        #("terms", json.array(terms, encode_term_result)),
       ])
   }
 }
@@ -104,6 +134,21 @@ pub fn encode_search_summary(summary: SearchSummary) -> json.Json {
 
 // -- JSON Decoders --
 
+fn term_result_decoder() -> decode.Decoder(TermResult) {
+  use clinic <- decode.field("clinic", decode.string)
+  use date_time_from <- decode.field("dateTimeFrom", decode.string)
+  use date_time_to <- decode.field("dateTimeTo", decode.string)
+  use doctor_first_name <- decode.field("doctorFirstName", decode.string)
+  use doctor_last_name <- decode.field("doctorLastName", decode.string)
+  decode.success(TermResult(
+    clinic:,
+    date_time_from:,
+    date_time_to:,
+    doctor_first_name:,
+    doctor_last_name:,
+  ))
+}
+
 fn search_status_decoder() -> decode.Decoder(SearchStatusDisplay) {
   use status_type <- decode.field("status", decode.string)
   case status_type {
@@ -114,8 +159,8 @@ fn search_status_decoder() -> decode.Decoder(SearchStatusDisplay) {
       decode.success(Processing(attempts, last_message))
     }
     "completed" -> {
-      use result <- decode.field("result", decode.string)
-      decode.success(Completed(result))
+      use terms <- decode.field("terms", decode.list(term_result_decoder()))
+      decode.success(Completed(terms))
     }
     _ -> decode.success(NoResult)
   }

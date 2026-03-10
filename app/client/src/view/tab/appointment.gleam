@@ -19,14 +19,18 @@ import ui_types.{
 pub fn view(active_tab: routing.ActiveTab, model: Model) -> Element(Msg) {
   let content = case active_tab {
     CreateSearch -> view_form(model.form)
-    ActiveSearches -> view_searches(model.searches)
+    ActiveSearches -> view_searches(model.searches, model.user_email)
   }
   div([], [view_tabs(active_tab, model.user_email), content])
 }
 
 fn view_tabs(active_tab: routing.ActiveTab, user_email: String) -> Element(Msg) {
   nav([class("flex border-b border-slate-200 mb-8")], [
-    view_tab("Active Searches", "/" <> user_email, active_tab == ActiveSearches),
+    view_tab(
+      "Active Searches",
+      "/" <> user_email <> "/searches",
+      active_tab == ActiveSearches,
+    ),
     view_tab(
       "Create Search",
       "/" <> user_email <> "/create",
@@ -94,43 +98,54 @@ fn view_form(search_form: CreateAppointmentRequest) -> Element(Msg) {
   )
 }
 
-fn view_searches(searches: List(SearchSummary)) -> Element(Msg) {
+fn view_searches(
+  searches: List(SearchSummary),
+  user_email: String,
+) -> Element(Msg) {
   divc("bg-white rounded-xl shadow-sm border border-slate-200 p-6", [
     h2([class("text-lg font-semibold text-slate-800 mb-4")], [
       text("Active Searches"),
     ]),
     case searches {
       [] -> p([class("text-slate-400 text-sm")], [text("No active searches")])
-      _ -> divc("space-y-3", searches |> list.map(view_search_card))
+      _ ->
+        divc(
+          "space-y-3",
+          searches |> list.map(view_search_card(_, user_email)),
+        )
     },
   ])
 }
 
-fn view_search_card(summary: SearchSummary) -> Element(Msg) {
-  divc(
-    "border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors",
+fn view_search_card(summary: SearchSummary, user_email: String) -> Element(Msg) {
+  let card_content = [
+    divc("flex items-center justify-between mb-2", [
+      strong([class("text-sm font-semibold text-slate-800")], [
+        text(summary.service),
+      ]),
+      span([class("text-xs text-slate-400 font-mono")], [text(summary.id)]),
+    ]),
+    divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
+      span([], [
+        text(
+          "Dr. "
+          <> summary.doctor_first_name
+          <> " "
+          <> summary.doctor_last_name,
+        ),
+      ]),
+      span([class("text-xs")], [text(summary.timestamp)]),
+    ]),
+    view_status_badge(summary.status),
+  ]
+  a(
     [
-      divc("flex items-center justify-between mb-2", [
-        strong([class("text-sm font-semibold text-slate-800")], [
-          text(summary.service),
-        ]),
-        span([class("text-xs text-slate-400 font-mono")], [
-          text(summary.id),
-        ]),
-      ]),
-      divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
-        span([], [
-          text(
-            "Dr. "
-            <> summary.doctor_first_name
-            <> " "
-            <> summary.doctor_last_name,
-          ),
-        ]),
-        span([class("text-xs")], [text(summary.timestamp)]),
-      ]),
-      view_status_badge(summary.status),
+      href("/" <> user_email <> "/request/details/" <> summary.id),
+      class(
+        "block border border-slate-200 rounded-lg p-4 hover:border-blue-300 hover:bg-slate-50 transition-colors",
+      ),
     ],
+    card_content,
   )
 }
 
@@ -164,14 +179,14 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
           [text(last_message)],
         ),
       ])
-    Completed(result) ->
+    Completed(terms) ->
       span(
         [
           class(
             "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800",
           ),
         ],
-        [text("Completed: " <> result)],
+        [text("Found " <> int.to_string(list.length(terms)) <> " terms")],
       )
   }
 }

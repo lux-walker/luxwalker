@@ -10,6 +10,7 @@ pub type ActiveTab {
 pub type Route {
   EmailRoute
   TabRoute(route: ActiveTab)
+  RequestDetailsRoute(id: String)
 }
 
 pub type RouteState {
@@ -33,7 +34,11 @@ fn parse_route_state(uri: uri.Uri) -> RouteState {
       case is_valid_email(email) {
         True ->
           case rest {
+            ["searches"] | [] ->
+              RouteState(route: TabRoute(ActiveSearches), email:)
             ["create"] -> RouteState(route: TabRoute(CreateSearch), email:)
+            ["request", "details", id] ->
+              RouteState(route: RequestDetailsRoute(id), email:)
             _ -> RouteState(route: TabRoute(ActiveSearches), email:)
           }
         False -> RouteState(route: EmailRoute, email: "")

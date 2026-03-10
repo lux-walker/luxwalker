@@ -1,6 +1,7 @@
 import actors/search_actor
 import actors/search_registry
 import app_context.{type AppContext}
+import config
 import gleam/dict
 import gleam/dynamic/decode
 import gleam/http.{Get, Post}
@@ -20,6 +21,7 @@ pub fn handle_http_api_requests(
   case req.method, path_segments {
     Post, ["walker"] -> handle_walker_post(ctx, req)
     Get, ["walker"] -> handle_walker_get(ctx, req)
+    Get, ["config"] -> handle_config(ctx)
     Get, ["ping"] -> handle_ping()
     _, _ -> wisp.not_found()
   }
@@ -27,6 +29,22 @@ pub fn handle_http_api_requests(
 
 fn get_user_email(req: wisp.Request) -> Result(String, Nil) {
   request.get_header(req, "x-user-email")
+}
+
+fn handle_config(ctx: AppContext) -> wisp.Response {
+  let environment = case ctx.config.environment {
+    config.Development -> "development"
+    config.Production -> "production"
+  }
+  wisp.ok()
+  |> wisp.json_body(
+    json.to_string(
+      json.object([
+        #("environment", json.string(environment)),
+        #("skipNotifications", json.bool(ctx.config.skip_notifications)),
+      ]),
+    ),
+  )
 }
 
 fn handle_ping() -> wisp.Response {
@@ -117,19 +135,11 @@ fn handle_walker_post_for_user(
 
 fn search_status_to_json(status: search_registry.SearchStatus) -> json.Json {
   case status {
-    search_registry.NoResult ->
-      json.object([#("status", json.string("no_result"))])
+    search_registry.NoResult -> types.encode_search_status(types.NoResult)
     search_registry.Processing(attempts, last_message) ->
-      json.object([
-        #("status", json.string("processing")),
-        #("attempts", json.int(attempts)),
-        #("last_message", json.string(last_message)),
-      ])
-    search_registry.HasResult(result) ->
-      json.object([
-        #("status", json.string("completed")),
-        #("result", json.string(result)),
-      ])
+      types.encode_search_status(types.Processing(attempts, last_message))
+    search_registry.HasResult(terms) ->
+      types.encode_search_status(types.Completed(terms))
   }
 }
 
