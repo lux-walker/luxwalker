@@ -41,6 +41,20 @@ pub fn fetch_searches(user_email: String) -> Effect(Msg) {
   )
 }
 
+pub fn rerun_search(id: String, user_email: String) -> Effect(Msg) {
+  send_relative(
+    "/api/walker/" <> id <> "/rerun",
+    fn(r) {
+      r
+      |> request.set_method(http.Post)
+      |> request.set_header("x-user-email", user_email)
+    },
+    rsvp.expect_json(types.post_search_response_decoder(), fn(result) {
+      OnHttpRequest(ui_types.SearchRerun(result))
+    }),
+  )
+}
+
 pub fn post_search(
   form: CreateAppointmentRequest,
   user_email: String,

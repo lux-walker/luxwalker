@@ -249,29 +249,31 @@ fn get_forgery_token(
     |> request.set_header("authorization-token", "Bearer " <> auth_token)
     |> request.set_header("authorization", "Bearer " <> auth_token)
 
-  case httpc.send(forgery_request) {
-    Error(_) -> Error(RequestFailed("Forgery token request failed"))
-    Ok(forgery_response) -> {
-      let forgery_cookies = extract_cookies(forgery_response)
-      case extract_xsrf_cookie(forgery_cookies) {
-        Error(_) -> Error(Unauthorized("Missing XSRF cookie"))
-        Ok(xsrf_cookie) -> {
-          case json.parse(forgery_response.body, forgery_token_decoder()) {
-            Error(_) ->
-              Error(ParseError("Failed to parse forgery token response"))
-            Ok(forgery_data) -> {
-              let all_cookies = list.append(cookies, [xsrf_cookie])
-              Ok(LuxmedClient(
-                cookies: all_cookies,
-                auth_token: auth_token,
-                xsrf_token: forgery_data.token,
-              ))
-            }
-          }
-        }
-      }
-    }
-  }
+  use forgery_response <- result.try(
+    httpc.send(forgery_request)
+    |> result.map_error(fn(_) { RequestFailed("Forgery token request failed") }),
+  )
+
+  let forgery_cookies = extract_cookies(forgery_response)
+
+  use xsrf_cookie <- result.try(
+    extract_xsrf_cookie(forgery_cookies)
+    |> result.map_error(fn(_) { Unauthorized("Missing XSRF cookie") }),
+  )
+
+  use forgery_data <- result.try(
+    json.parse(forgery_response.body, forgery_token_decoder())
+    |> result.map_error(fn(_) {
+      ParseError("Failed to parse forgery token response")
+    }),
+  )
+
+  let all_cookies = list.append(cookies, [xsrf_cookie])
+  Ok(LuxmedClient(
+    cookies: all_cookies,
+    auth_token: auth_token,
+    xsrf_token: forgery_data.token,
+  ))
 }
 
 pub fn prepare_request(
@@ -294,7 +296,7 @@ pub fn prepare_request(
   |> request.set_body("")
 }
 
-pub fn get(
+fn get(
   client: LuxmedClient,
   path: String,
 ) -> Result(Response(String), LuxmedApiError) {

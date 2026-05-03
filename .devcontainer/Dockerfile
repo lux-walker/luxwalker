@@ -4,7 +4,16 @@ ARG GLEAM_VERSION=v1.14.0
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
-    sudo git zsh curl wget ca-certificates xz-utils \
+    sudo git zsh curl wget ca-certificates xz-utils gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install watchexec
@@ -47,8 +56,8 @@ RUN sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highligh
 # Install Claude Code using official installer
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Add Claude to PATH
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+# Make Claude available in non-interactive shells too (Zed runs postCreateCommand in /bin/sh)
+ENV PATH="/home/developer/.local/bin:${PATH}"
 
 # Configure Claude Code to use API key from environment (skip login prompt)
 RUN mkdir -p ~/.claude && \

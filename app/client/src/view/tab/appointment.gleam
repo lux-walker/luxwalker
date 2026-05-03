@@ -5,7 +5,7 @@ import lustre/element.{type Element, text}
 import lustre/element/html.{
   a, button, div, form, h2, input, label, nav, p, span, strong,
 }
-import lustre/event.{on_input, on_submit}
+import lustre/event.{on_click, on_input, on_submit}
 import routing.{ActiveSearches, CreateSearch}
 import shared/types.{
   type CreateAppointmentRequest, type SearchStatusDisplay, type SearchSummary,
@@ -13,7 +13,8 @@ import shared/types.{
 }
 import ui_types.{
   type FormField, type Model, type Msg, AppointmentForm, DoctorFirstName,
-  DoctorLastName, NotificationEmail, Password, Service, Submit, UpdateField,
+  DoctorLastName, NotificationEmail, Password, RerunSearch, Service, Submit,
+  UpdateField,
 }
 
 pub fn view(active_tab: routing.ActiveTab, model: Model) -> Element(Msg) {
@@ -109,43 +110,53 @@ fn view_searches(
     case searches {
       [] -> p([class("text-slate-400 text-sm")], [text("No active searches")])
       _ ->
-        divc(
-          "space-y-3",
-          searches |> list.map(view_search_card(_, user_email)),
-        )
+        divc("space-y-3", searches |> list.map(view_search_card(_, user_email)))
     },
   ])
 }
 
 fn view_search_card(summary: SearchSummary, user_email: String) -> Element(Msg) {
-  let card_content = [
-    divc("flex items-center justify-between mb-2", [
-      strong([class("text-sm font-semibold text-slate-800")], [
-        text(summary.service),
-      ]),
-      span([class("text-xs text-slate-400 font-mono")], [text(summary.id)]),
-    ]),
-    divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
-      span([], [
-        text(
-          "Dr. "
-          <> summary.doctor_first_name
-          <> " "
-          <> summary.doctor_last_name,
-        ),
-      ]),
-      span([class("text-xs")], [text(summary.timestamp)]),
-    ]),
-    view_status_badge(summary.status),
-  ]
-  a(
+  let detail_url = "/" <> user_email <> "/request/details/" <> summary.id
+  divc(
+    "border border-slate-200 rounded-lg hover:border-blue-300 transition-colors",
     [
-      href("/" <> user_email <> "/request/details/" <> summary.id),
-      class(
-        "block border border-slate-200 rounded-lg p-4 hover:border-blue-300 hover:bg-slate-50 transition-colors",
-      ),
+      a([href(detail_url), class("block p-4 hover:bg-slate-50")], [
+        divc("flex items-center justify-between mb-2", [
+          strong([class("text-sm font-semibold text-slate-800")], [
+            text(summary.service),
+          ]),
+          span([class("text-xs text-slate-400 font-mono")], [text(summary.id)]),
+        ]),
+        divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
+          span([], [
+            text(
+              "Dr. "
+              <> summary.doctor_first_name
+              <> " "
+              <> summary.doctor_last_name,
+            ),
+          ]),
+          span([class("text-xs")], [text(summary.timestamp)]),
+        ]),
+        view_status_badge(summary.status),
+      ]),
+      case summary.status {
+        Processing(_, _) ->
+          divc("border-t border-slate-100 px-4 py-2", [
+            button(
+              [
+                type_("button"),
+                class(
+                  "text-xs font-medium text-blue-600 hover:text-blue-800 cursor-pointer",
+                ),
+                on_click(RerunSearch(summary.id)),
+              ],
+              [text("Run again")],
+            ),
+          ])
+        _ -> div([], [])
+      },
     ],
-    card_content,
   )
 }
 

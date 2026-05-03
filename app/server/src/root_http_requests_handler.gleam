@@ -6,11 +6,10 @@ import wisp
 pub fn handle_request(ctx: AppContext, req: wisp.Request) -> wisp.Response {
   use <- wisp.serve_static(req, under: "/", from: static_directory())
 
-  case wisp.path_segments(req), req.method {
-    ["api", ..rest], _ ->
+  case wisp.path_segments(req) {
+    ["api", ..rest] ->
       api_request_handler.handle_http_api_requests(ctx, rest, req)
-    [_email, ..], _ -> serve_index()
-    _, _ -> serve_index()
+    _ -> serve_index()
   }
 }
 

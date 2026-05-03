@@ -1,8 +1,8 @@
+import actors/notification_actor
 import actors/search_registry
-import clients/email_client
+import app_context.{type AppContext}
 import clients/luxmed_client
-import clients/ntfy_client
-import config.{type AppConfig, Development, Production}
+import config.{Development, Production}
 import gleam/erlang/process
 import gleam/int
 import gleam/io
@@ -33,67 +33,79 @@ pub type SearchResult {
   SearchComplete(result: String)
 }
 
-pub type State {
+type State {
   State(
     id: String,
     self: process.Subject(Message),
     attempt: Int,
     request: AppointmentRequest,
-    registry: process.Subject(search_registry.Message),
-    config: AppConfig,
+    context: AppContext,
+    notifier: Notifier,
+    registry: Registry,
     schedule: fn() -> Int,
   )
 }
 
-fn production_schedule_table() -> List(String) {
-  [
-    "01:00",
-    "05:00",
-    "05:30",
-    "05:59",
-    "06:00",
-    "06:01",
-    "06:02",
-    "06:03",
-    "06:04",
-    "06:05",
-    "06:06",
-    "06:07",
-    "06:08",
-    "06:09",
-    "06:10",
-    "06:15",
-    "06:20",
-    "06:30",
-    "06:45",
-    "07:00",
-    "07:15",
-    "07:30",
-    "07:45",
-    "08:00",
-    "08:15",
-    "08:30",
-    "08:45",
-    "09:00",
-    "10:00",
-    "11:00",
-    "12:00",
-    "13:00",
-    "14:00",
-    "15:00",
-    "16:00",
-    "17:00",
-    "18:00",
-    "19:00",
-    "20:00",
-    "21:00",
-    "22:00",
-    "23:00",
-  ]
+type Notifier {
+  Notifier(on_started: fn() -> Nil, on_appointment_found: fn() -> Nil)
 }
 
-fn production_day_schedule() -> Int {
-  todo
+fn build_notifier(
+  notification: process.Subject(notification_actor.Message),
+  request: AppointmentRequest,
+) -> Notifier {
+  let doctor_name = request.doctor.first_name <> " " <> request.doctor.last_name
+  Notifier(
+    on_started: fn() {
+      notification_actor.send_search_started(
+        notification,
+        request.service,
+        doctor_name,
+      )
+    },
+    on_appointment_found: fn() {
+      notification_actor.send_appointment_found(
+        notification,
+        request.notification_email,
+        request.service,
+        doctor_name,
+      )
+    },
+  )
+}
+
+type Registry {
+  Registry(
+    register: fn() -> Nil,
+    completed: fn(List(TermResult)) -> Nil,
+    attempt_failed: fn(Int, String) -> Nil,
+  )
+}
+
+fn build_registry(
+  registry: process.Subject(search_registry.Message),
+  id: String,
+  request: AppointmentRequest,
+) -> Registry {
+  Registry(
+    register: fn() {
+      search_registry.register_search(
+        registry,
+        id,
+        request.service,
+        request.doctor,
+        request.login,
+        request.notification_email,
+        request.password,
+      )
+    },
+    completed: fn(terms) {
+      search_registry.request_completed(registry, id, terms)
+    },
+    attempt_failed: fn(attempts, message) {
+      search_registry.request_attempt_failed(registry, id, attempts, message)
+    },
+  )
 }
 
 fn production_timeout_ms() -> Int {
@@ -116,7 +128,7 @@ fn production_timeout_ms() -> Int {
 }
 
 fn send_continue_after(state: State) {
-  let timeout_ms = case state.config.environment {
+  let timeout_ms = case state.context.config.environment {
     Development -> one_minute_ms
     Production -> state.schedule()
   }
@@ -166,13 +178,12 @@ fn print_search_error(error: search_handler.SearchError, state: State) -> Nil {
 }
 
 pub fn create_and_call(
-  registry: process.Subject(search_registry.Message),
-  id: String,
-  request: AppointmentRequest,
-  config: AppConfig,
-  timeout_ms: Int,
+  context context: AppContext,
+  id id: String,
+  request request: AppointmentRequest,
+  timeout_ms timeout_ms: Int,
 ) -> Result(SearchResult, process.Subject(Message)) {
-  let assert Ok(started) = create_actor(registry, id, request, config)
+  let assert Ok(started) = create_actor(context, id, request)
   let subject = started.data
   let result = try_call(subject, timeout_ms, Search)
 
@@ -193,10 +204,9 @@ fn try_call(
 }
 
 pub fn create_actor(
-  registry: process.Subject(search_registry.Message),
+  context: AppContext,
   id: String,
   request: AppointmentRequest,
-  config: AppConfig,
 ) -> Result(actor.Started(process.Subject(Message)), actor.StartError) {
   let initial_state =
     State(
@@ -204,8 +214,9 @@ pub fn create_actor(
       self: process.new_subject(),
       attempt: 0,
       request: request,
-      registry: registry,
-      config: config,
+      context: context,
+      notifier: build_notifier(context.actors.notification, request),
+      registry: build_registry(context.actors.search_registry, id, request),
       schedule: production_timeout_ms,
     )
   let result =
@@ -232,23 +243,9 @@ fn init(
 ) -> actor.Next(State, Message) {
   io.println("Actor " <> state.id <> ": Initialized")
   search_handler.print_request(state.request)
-  search_registry.register_search(
-    state.registry,
-    state.id,
-    state.request.service,
-    state.request.doctor,
-    state.request.login,
-  )
+  state.registry.register()
   io.println("Actor " <> state.id <> ": Registered search")
-  let ntfy =
-    ntfy_client.create_client(
-      state.config.ntfy_topic,
-      state.config.skip_notifications,
-    )
-  ntfy.send_search_started(
-    state.request.service,
-    state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
-  )
+  state.notifier.on_started()
 
   actor.continue(State(..state, self: self))
 }
@@ -279,7 +276,7 @@ fn search(
     Ok(terms) -> {
       io.println("Actor " <> state.id <> ": Search complete, stopping actor")
       let term_results = terms_to_result_list(terms)
-      search_registry.request_completed(state.registry, state.id, term_results)
+      state.registry.completed(term_results)
       let count = list.length(term_results) |> int.to_string
       process.send(reply_subject, SearchComplete("Found " <> count <> " terms"))
       actor.stop()
@@ -289,18 +286,14 @@ fn search(
         search_handler.VisitsNotFound -> {
           io.println("Visit not found, will retry in the future. Accepted.")
           let new_attempt = state.attempt + 1
-          search_registry.request_attempt_failed(
-            state.registry,
-            state.id,
-            new_attempt,
-            "Visits not found",
-          )
+          state.registry.attempt_failed(new_attempt, "Visits not found")
           process.send(
             reply_subject,
             SearchComplete("No visits, request scheduled"),
           )
-          send_continue_after(state)
-          actor.continue(State(..state, attempt: new_attempt))
+          let new_state = State(..state, attempt: new_attempt)
+          send_continue_after(new_state)
+          actor.continue(new_state)
         }
         actual_error -> {
           print_search_error(error, state)
@@ -319,40 +312,17 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
         "Actor " <> state.id <> ": Processing complete, stopping actor",
       )
 
-      let ntfy =
-        ntfy_client.create_client(
-          state.config.ntfy_topic,
-          state.config.skip_notifications,
-        )
-
-      ntfy.send_appointment_found(
-        state.request.service,
-        state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
-      )
-
-      let email =
-        email_client.create_client(
-          state.config.email,
-          state.config.skip_notifications,
-        )
-
-      email.send_appointment_found(
-        state.request.notification_email,
-        state.request.service,
-        state.request.doctor.first_name <> " " <> state.request.doctor.last_name,
-      )
+      state.notifier.on_appointment_found()
 
       let term_results = terms_to_result_list(terms)
-      search_registry.request_completed(state.registry, state.id, term_results)
+      state.registry.completed(term_results)
       io.println("Actor " <> state.id <> ": Request completed, stopping actor")
       actor.stop()
     }
     Error(error) -> {
       io.println("Actor " <> state.id <> ": Processing failed, will retry")
       let new_attempt = state.attempt + 1
-      search_registry.request_attempt_failed(
-        state.registry,
-        state.id,
+      state.registry.attempt_failed(
         new_attempt,
         search_handler.get_error_message(error),
       )

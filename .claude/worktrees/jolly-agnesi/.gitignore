@@ -1,0 +1,23 @@
+# Gleam build artifacts
+*.beam
+*.ez
+build/
+erl_crash.dump
+
+# Lustre
+.lustre/
+
+# Node
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# OS
+.DS_Store
+
+# HTTP test files
+api-test.http

@@ -8,7 +8,7 @@ import routing.{
 import ui_types.{
   type Model, type Msg, AppointmentForm as AppointmentForm,
   EmailForm as EmailForm, EmailInput, EmailSubmit, Model, OnHttpRequest,
-  OnRouteChange, Submit, UpdateField,
+  OnRouteChange, RerunSearch, Submit, UpdateField,
 }
 
 pub fn init(_flags) -> #(Model, Effect(Msg)) {
@@ -97,6 +97,11 @@ fn on_http_request(
       effect.none(),
     )
     ui_types.ConfigFetched(Error(_)) -> #(model, effect.none())
+    ui_types.SearchRerun(Ok(_)) -> #(
+      model,
+      requests.fetch_searches(model.user_email),
+    )
+    ui_types.SearchRerun(Error(_)) -> #(model, effect.none())
   }
 }
 
@@ -117,5 +122,6 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     OnHttpRequest(http_request) -> on_http_request(model, http_request)
     AppointmentForm(action) -> on_appointment_form_change(action, model)
     EmailForm(action) -> on_email_form_change(action, model)
+    RerunSearch(id) -> #(model, requests.rerun_search(id, model.user_email))
   }
 }

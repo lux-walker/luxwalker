@@ -1,5 +1,6 @@
+import actors/notification_actor
 import actors/search_registry
-import app_context.{AppContext}
+import app_context.{Actors, AppContext}
 import config
 import envoy
 import gleam/erlang/process
@@ -67,9 +68,15 @@ pub fn main() {
   app_config |> config.print_config()
 
   let assert Ok(registry) = search_registry.start()
-  let ctx = AppContext(search_registry: registry, config: app_config)
+  let assert Ok(notification) = notification_actor.start(app_config)
+  let ctx =
+    AppContext(
+      actors: Actors(search_registry: registry, notification: notification),
+      config: app_config,
+    )
 
-  repeatedly.call(every_minute(), Nil, fn(_, _: Int) {
+  every_minute()
+  |> repeatedly.call(Nil, fn(_, _: Int) {
     send_ping(app_config.environment)
     Nil
   })

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(docker --version)",
+      "Bash(docker info *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(docker exec *)"
     ]
   }
 }

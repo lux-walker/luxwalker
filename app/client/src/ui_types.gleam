@@ -65,6 +65,7 @@ pub type HttpRequest {
   SearchRequestSubmitted(Result(String, rsvp.Error))
   SearchesFetched(Result(List(SearchSummary), rsvp.Error))
   ConfigFetched(Result(AppSettings, rsvp.Error))
+  SearchRerun(Result(String, rsvp.Error))
 }
 
 pub type EmailFormAction {
@@ -77,4 +78,5 @@ pub type Msg {
   OnHttpRequest(HttpRequest)
   AppointmentForm(AppointmentFormAction)
   EmailForm(EmailFormAction)
+  RerunSearch(id: String)
 }

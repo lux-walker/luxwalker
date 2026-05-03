@@ -18,6 +18,12 @@
     }
   },
   "forwardPorts": [8000],
-  "postCreateCommand": "gleam --version && claude --version",
+  "postCreateCommand": "sudo chown -R developer:developer /home/developer/.config && mkdir -p /home/developer/.config/git && gleam --version && claude --version && gh --version",
+  "mounts": [
+    "source=luxwalker-user-config,target=/home/developer/.config,type=volume"
+  ],
+  "containerEnv": {
+    "GIT_CONFIG_GLOBAL": "/home/developer/.config/git/config"
+  },
   "remoteEnv": {}
 }
