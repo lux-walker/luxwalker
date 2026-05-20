@@ -2,8 +2,8 @@ import clients/email_client.{type EmailConfig, EmailConfig}
 import dot_env as dot
 import envoy
 import gleam/bool
-import gleam/io
 import gleam/result
+import utils/log.{type Logger}
 
 pub type Environment {
   Development
@@ -36,8 +36,8 @@ pub type AppConfig {
   )
 }
 
-pub fn load() -> Result(AppConfig, ConfigError) {
-  load_env_file()
+pub fn load(logger: Logger) -> Result(AppConfig, ConfigError) {
+  load_env_file(logger)
 
   use email_config <- result.try(load_email_config())
   use ntfy_topic <- result.try(
@@ -57,34 +57,26 @@ pub fn load() -> Result(AppConfig, ConfigError) {
   ))
 }
 
-pub fn print_config(config: AppConfig) -> Nil {
+pub fn print_config(logger: Logger, config: AppConfig) -> Nil {
   let env = case config.environment {
     Development -> "development"
     Production -> "production"
   }
-  io.println("=== App Configuration ===")
-  io.println("Environment: " <> env)
-  io.println("NTFY Topic: " <> config.ntfy_topic)
-  io.println(
-    "Skip Notifications: " <> config.skip_notifications |> bool.to_string,
-  )
-  io.println("Email Host: " <> config.email.smtp_host)
-  io.println(
-    "Email From: "
-    <> config.email.from_name
-    <> " <"
-    <> config.email.from_email
-    <> ">",
-  )
-  io.println("=========================")
+  log.info(logger, "config_loaded", [
+    #("environment", env),
+    #("ntfy_topic", config.ntfy_topic),
+    #("skip_notifications", bool.to_string(config.skip_notifications)),
+    #("email_host", config.email.smtp_host),
+    #("email_from", config.email.from_name <> " <" <> config.email.from_email <> ">"),
+  ])
 }
 
-fn load_env_file() -> Nil {
+fn load_env_file(logger: Logger) -> Nil {
   dot.new()
   |> dot.set_path(".env")
   |> dot.load
 
-  io.println("Attempted to load .env file")
+  log.info(logger, "env_file_loaded", [#("path", ".env")])
 }
 
 fn load_email_config() -> Result(EmailConfig, ConfigError) {

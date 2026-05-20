@@ -22,10 +22,7 @@ pub fn start(
 ) -> Result(process.Subject(Message), actor.StartError) {
   let initial_state =
     State(
-      email: email_client.create_client(
-        config.email,
-        config.skip_notifications,
-      ),
+      email: email_client.create_client(config.email, config.skip_notifications),
       ntfy: ntfy_client.create_client(
         config.ntfy_topic,
         config.skip_notifications,
@@ -48,7 +45,7 @@ pub fn send_search_started(
   service: String,
   doctor_name: String,
 ) -> Nil {
-  process.send(notifier, SearchStarted(service, doctor_name))
+  notifier |> process.send(SearchStarted(service, doctor_name))
 }
 
 pub fn send_appointment_found(
@@ -57,16 +54,11 @@ pub fn send_appointment_found(
   service: String,
   doctor_name: String,
 ) -> Nil {
-  process.send(
-    notifier,
-    AppointmentFound(notification_email, service, doctor_name),
-  )
+  notifier
+  |> process.send(AppointmentFound(notification_email, service, doctor_name))
 }
 
-fn handle_message(
-  state: State,
-  message: Message,
-) -> actor.Next(State, Message) {
+fn handle_message(state: State, message: Message) -> actor.Next(State, Message) {
   case message {
     SearchStarted(service, doctor_name) -> {
       state.ntfy.send_search_started(service, doctor_name)

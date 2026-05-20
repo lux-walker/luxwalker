@@ -12,10 +12,10 @@ fn divc(classes: String, children: List(Element(Msg))) -> Element(Msg) {
 }
 
 pub fn view(model: Model) -> Element(Msg) {
-  divc("min-h-screen bg-gradient-to-br from-slate-50 to-slate-100", [
+  divc("min-h-screen bg-gradient-to-br from-base to-overlay", [
     divc("max-w-2xl mx-auto px-4 py-10", [
-      h1([class("text-3xl font-bold text-slate-900")], [text("Luxwalker")]),
-      p([class("text-slate-500 mt-1 mb-8")], [
+      h1([class("text-3xl font-bold text-text")], [text("Luxwalker")]),
+      p([class("text-subtle mt-1 mb-8")], [
         text("Medical appointment search"),
       ]),
       case model.route {

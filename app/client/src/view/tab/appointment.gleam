@@ -7,7 +7,7 @@ import lustre/element/html.{
 }
 import lustre/event.{on_click, on_input, on_submit}
 import routing.{ActiveSearches, CreateSearch}
-import shared/types.{
+import shared/charon.{
   type CreateAppointmentRequest, type SearchStatusDisplay, type SearchSummary,
   Completed, NoResult, Processing,
 }
@@ -26,7 +26,7 @@ pub fn view(active_tab: routing.ActiveTab, model: Model) -> Element(Msg) {
 }
 
 fn view_tabs(active_tab: routing.ActiveTab, user_email: String) -> Element(Msg) {
-  nav([class("flex border-b border-slate-200 mb-8")], [
+  nav([class("flex border-b border-hl-med mb-8")], [
     view_tab(
       "Active Searches",
       "/" <> user_email <> "/searches",
@@ -44,10 +44,10 @@ fn view_tab(lbl: String, path: String, is_active: Bool) -> Element(Msg) {
   let base =
     "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
   let classes = case is_active {
-    True -> base <> " border-blue-600 text-blue-600"
+    True -> base <> " border-pine text-pine"
     False ->
       base
-      <> " border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+      <> " border-transparent text-subtle hover:text-text hover:border-hl-high"
   }
   a([href(path), class(classes)], [text(lbl)])
 }
@@ -55,11 +55,11 @@ fn view_tab(lbl: String, path: String, is_active: Bool) -> Element(Msg) {
 fn view_form(search_form: CreateAppointmentRequest) -> Element(Msg) {
   form(
     [
-      class("bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8"),
+      class("bg-surface rounded-xl shadow-sm border border-hl-med p-6 mb-8"),
       on_submit(fn(_) { AppointmentForm(Submit) }),
     ],
     [
-      h2([class("text-lg font-semibold text-slate-800 mb-4")], [
+      h2([class("text-lg font-semibold text-text mb-4")], [
         text("New Search"),
       ]),
       divc("space-y-4", [
@@ -90,7 +90,7 @@ fn view_form(search_form: CreateAppointmentRequest) -> Element(Msg) {
         [
           type_("submit"),
           class(
-            "mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer",
+            "mt-6 w-full bg-pine hover:bg-foam text-surface font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer",
           ),
         ],
         [text("Start Search")],
@@ -103,12 +103,12 @@ fn view_searches(
   searches: List(SearchSummary),
   user_email: String,
 ) -> Element(Msg) {
-  divc("bg-white rounded-xl shadow-sm border border-slate-200 p-6", [
-    h2([class("text-lg font-semibold text-slate-800 mb-4")], [
+  divc("bg-surface rounded-xl shadow-sm border border-hl-med p-6", [
+    h2([class("text-lg font-semibold text-text mb-4")], [
       text("Active Searches"),
     ]),
     case searches {
-      [] -> p([class("text-slate-400 text-sm")], [text("No active searches")])
+      [] -> p([class("text-muted text-sm")], [text("No active searches")])
       _ ->
         divc("space-y-3", searches |> list.map(view_search_card(_, user_email)))
     },
@@ -118,16 +118,16 @@ fn view_searches(
 fn view_search_card(summary: SearchSummary, user_email: String) -> Element(Msg) {
   let detail_url = "/" <> user_email <> "/request/details/" <> summary.id
   divc(
-    "border border-slate-200 rounded-lg hover:border-blue-300 transition-colors",
+    "border border-hl-med rounded-lg hover:border-foam transition-colors",
     [
-      a([href(detail_url), class("block p-4 hover:bg-slate-50")], [
+      a([href(detail_url), class("block p-4 hover:bg-hl-low")], [
         divc("flex items-center justify-between mb-2", [
-          strong([class("text-sm font-semibold text-slate-800")], [
+          strong([class("text-sm font-semibold text-text")], [
             text(summary.service),
           ]),
-          span([class("text-xs text-slate-400 font-mono")], [text(summary.id)]),
+          span([class("text-xs text-muted font-mono")], [text(summary.id)]),
         ]),
-        divc("flex items-center justify-between mb-3 text-sm text-slate-500", [
+        divc("flex items-center justify-between mb-3 text-sm text-subtle", [
           span([], [
             text(
               "Dr. "
@@ -142,12 +142,12 @@ fn view_search_card(summary: SearchSummary, user_email: String) -> Element(Msg) 
       ]),
       case summary.status {
         Processing(_, _) ->
-          divc("border-t border-slate-100 px-4 py-2", [
+          divc("border-t border-hl-low px-4 py-2", [
             button(
               [
                 type_("button"),
                 class(
-                  "text-xs font-medium text-blue-600 hover:text-blue-800 cursor-pointer",
+                  "text-xs font-medium text-pine hover:text-foam cursor-pointer",
                 ),
                 on_click(RerunSearch(summary.id)),
               ],
@@ -166,7 +166,7 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
       span(
         [
           class(
-            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800",
+            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-overlay text-gold",
           ),
         ],
         [text("Waiting")],
@@ -176,7 +176,7 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
         span(
           [
             class(
-              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800",
+              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-overlay text-foam",
             ),
           ],
           [text("Processing (attempt " <> int.to_string(attempts) <> ")")],
@@ -184,7 +184,7 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
         span(
           [
             class(
-              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 ml-1",
+              "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-overlay text-iris ml-1",
             ),
           ],
           [text(last_message)],
@@ -194,7 +194,7 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
       span(
         [
           class(
-            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800",
+            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-overlay text-pine",
           ),
         ],
         [text("Found " <> int.to_string(list.length(terms)) <> " terms")],
@@ -209,7 +209,7 @@ fn view_input(
   field: FormField,
 ) -> Element(Msg) {
   div([], [
-    label([class("block text-sm font-medium text-slate-700 mb-1")], [
+    label([class("block text-sm font-medium text-subtle mb-1")], [
       text(lbl),
     ]),
     input([
@@ -217,7 +217,7 @@ fn view_input(
       value(val),
       placeholder(lbl),
       class(
-        "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400",
+        "w-full px-3 py-2 bg-base border border-hl-high rounded-lg text-sm text-text focus:outline-none focus:ring-2 focus:ring-pine focus:border-pine placeholder:text-muted",
       ),
       on_input(fn(v) { AppointmentForm(UpdateField(field, v)) }),
     ]),

@@ -3,11 +3,11 @@ import gcourier/smtp
 import gleam/bool
 import gleam/erlang/process
 import gleam/int
-import gleam/io
 import gleam/option.{Some}
 import gleam/string
 import gleam/time/calendar
 import gleam/time/timestamp
+import utils/log.{type Logger}
 
 const smtp_timeout_ms = 30_000
 
@@ -30,47 +30,49 @@ pub type EmailClient {
 }
 
 pub fn create_client(config: EmailConfig, skip: Bool) -> EmailClient {
-  io.println("Sending emails enabled: " <> skip |> bool.to_string)
+  let logger = log.root([#("component", "email_client")])
+  log.info(logger, "email_client_created", [
+    #("enabled", bool.to_string(!skip)),
+    #("smtp_host", config.smtp_host),
+  ])
   case skip {
     True ->
       EmailClient(
         send_appointment_found: fn(_, _, _) {
-          io.println(
-            "Email: Skipping appointment found (notifications disabled)",
-          )
+          log.info(logger, "email_skipped", [
+            #("kind", "appointment_found"),
+          ])
         },
         send_error: fn(_, _) {
-          io.println("Email: Skipping error email (notifications disabled)")
+          log.info(logger, "email_skipped", [#("kind", "error")])
         },
       )
     False ->
       EmailClient(
         send_appointment_found: fn(to, service, doctor) {
-          send_appointment_found_email(config, to, service, doctor)
+          send_appointment_found_email(logger, config, to, service, doctor)
         },
         send_error: fn(to, error_message) {
-          send_error_email(config, to, error_message)
+          send_error_email(logger, config, to, error_message)
         },
       )
   }
 }
 
 fn send_appointment_found_email(
+  logger: Logger,
   config: EmailConfig,
   to: String,
   service: String,
   doctor: String,
 ) -> Nil {
-  io.println(
-    "Sending appointment found email to "
-    <> to
-    <> " for service "
-    <> service
-    <> " and doctor "
-    <> doctor
-    <> " timestamp "
-    <> format_current_time(),
-  )
+  log.info(logger, "email_sending", [
+    #("kind", "appointment_found"),
+    #("to", to),
+    #("service", service),
+    #("doctor", doctor),
+    #("ts", format_current_time()),
+  ])
   let subject = "Nowe terminy " <> service <> " w Luxmedzie!"
   let body =
     "<html><body><b>Pojawiły się nowe terminy "
@@ -86,7 +88,7 @@ fn send_appointment_found_email(
     |> message.set_subject(subject)
     |> message.set_html(body)
 
-  send_with_timeout(config, email)
+  send_with_timeout(logger, config, email)
 }
 
 fn format_current_time() -> String {
@@ -109,6 +111,7 @@ fn pad2(value: Int) -> String {
 }
 
 fn send_error_email(
+  logger: Logger,
   config: EmailConfig,
   to: String,
   error_message: String,
@@ -126,10 +129,14 @@ fn send_error_email(
     |> message.set_subject(subject)
     |> message.set_html(body)
 
-  send_with_timeout(config, email)
+  send_with_timeout(logger, config, email)
 }
 
-fn send_with_timeout(config: EmailConfig, email: message.Message) -> Nil {
+fn send_with_timeout(
+  logger: Logger,
+  config: EmailConfig,
+  email: message.Message,
+) -> Nil {
   let subj = process.new_subject()
 
   process.spawn_unlinked(fn() {
@@ -143,7 +150,10 @@ fn send_with_timeout(config: EmailConfig, email: message.Message) -> Nil {
   })
 
   case process.receive(subj, smtp_timeout_ms) {
-    Ok(Nil) -> io.println("Email: Sent successfully")
-    Error(Nil) -> io.println("Email: Timed out after 30s")
+    Ok(Nil) -> log.info(logger, "email_sent", [])
+    Error(Nil) ->
+      log.error(logger, "email_timeout", [
+        #("timeout_ms", int.to_string(smtp_timeout_ms)),
+      ])
   }
 }

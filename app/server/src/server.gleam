@@ -7,11 +7,11 @@ import gleam/erlang/process
 import gleam/http/request
 import gleam/httpc
 import gleam/int
-import gleam/io
 import gleam/result
 import mist
 import repeatedly
 import root_http_requests_handler
+import utils/log
 import wisp
 import wisp/wisp_mist
 
@@ -28,11 +28,13 @@ fn get_port() -> Int {
   }
 }
 
-fn load_config() -> config.AppConfig {
-  case config.load() {
+fn load_config(logger: log.Logger) -> config.AppConfig {
+  case config.load(logger) {
     Ok(cfg) -> cfg
     Error(error) -> {
-      io.println("FATAL: " <> config.print_error(error))
+      log.error(logger, "config_load_failed", [
+        #("reason", config.print_error(error)),
+      ])
       panic as "Failed to load configuration"
     }
   }
@@ -45,18 +47,18 @@ fn ping_endpoint_url(environment: config.Environment) -> String {
   }
 }
 
-fn send_ping(environment: config.Environment) -> Nil {
+fn send_ping(logger: log.Logger, environment: config.Environment) -> Nil {
   let url = ping_endpoint_url(environment)
-  io.println("Ping")
+  log.info(logger, "ping_start", [#("url", url)])
 
   case request.to(url) {
     Ok(req) -> {
       case httpc.send(req) {
-        Ok(_response) -> io.println("Pong")
-        Error(_) -> io.println("Ping failed")
+        Ok(_response) -> log.info(logger, "ping_ok", [])
+        Error(_) -> log.warn(logger, "ping_failed", [#("url", url)])
       }
     }
-    Error(_) -> io.println("Invalid ping URL")
+    Error(_) -> log.error(logger, "ping_invalid_url", [#("url", url)])
   }
 
   Nil
@@ -64,25 +66,27 @@ fn send_ping(environment: config.Environment) -> Nil {
 
 pub fn main() {
   wisp.configure_logger()
-  let app_config = load_config()
-  app_config |> config.print_config()
+  log.configure()
 
-  let assert Ok(registry) = search_registry.start()
+  let root_logger = log.root([#("service", "luxwalker")])
+
+  let app_config = load_config(root_logger)
+  config.print_config(root_logger, app_config)
+
+  let registry_logger = log.child(root_logger, [#("component", "search_registry")])
+  let assert Ok(registry) = search_registry.start(registry_logger)
+
   let assert Ok(notification) = notification_actor.start(app_config)
+
   let ctx =
     AppContext(
-      actors: Actors(search_registry: registry, notification: notification),
+      actors: Actors(registry, notification),
       config: app_config,
+      logger: root_logger,
     )
 
-  every_minute()
-  |> repeatedly.call(Nil, fn(_, _: Int) {
-    send_ping(app_config.environment)
-    Nil
-  })
-
   let port = get_port()
-  io.println("Starting server on port " <> int.to_string(port))
+  log.info(root_logger, "server_starting", [#("port", int.to_string(port))])
 
   let assert Ok(_) =
     wisp_mist.handler(
@@ -93,6 +97,12 @@ pub fn main() {
     |> mist.port(port)
     |> mist.bind("0.0.0.0")
     |> mist.start
+
+  let ping_logger = log.child(root_logger, [#("component", "ping")])
+  every_minute()
+  |> repeatedly.call(Nil, fn(_, _) {
+    send_ping(ping_logger, app_config.environment)
+  })
 
   process.sleep_forever()
 }

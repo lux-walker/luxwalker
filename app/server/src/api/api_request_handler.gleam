@@ -1,15 +1,16 @@
 import actors/search_actor
 import actors/search_registry
+import api/jsonx
 import app_context.{type AppContext, type RequestAppContext, RequestAppContext}
 import config
 import gleam/dict
 import gleam/http.{Get, Post}
 import gleam/http/request
-import gleam/io
 import gleam/json
 import handlers/search_handler
-import shared/types
+import shared/charon
 import utils/httpx
+import utils/log
 import wisp
 import youid/uuid
 
@@ -31,7 +32,13 @@ fn handle_request_context_oriented(
   req req: wisp.Request,
 ) -> wisp.Response {
   use user_email <- get_user_email(req)
-  let request_context = RequestAppContext(user_email)
+  let request_id = uuid.v4_string()
+  let request_logger =
+    log.child(ctx.logger, [
+      #("request_id", request_id),
+      #("user_email", user_email),
+    ])
+  let request_context = RequestAppContext(user_email, request_logger)
   case req.method, path_segments {
     Post, ["walker"] -> handle_walker_post_for_user(ctx, request_context, req)
     Get, ["walker"] -> handle_walker_get_for_user(ctx, request_context)
@@ -73,8 +80,9 @@ fn handle_walker_post_for_user(
   req: wisp.Request,
 ) -> wisp.Response {
   use create_appointment <- httpx.decode_json_body(
+    request_ctx.logger,
     req,
-    types.create_appointment_request_decoder(),
+    charon.create_appointment_request_decoder(),
   )
 
   let request =
@@ -87,28 +95,33 @@ fn handle_walker_post_for_user(
     )
 
   let id = uuid.v4_string()
-  let actor_result =
-    search_actor.create_and_call(
-      context: ctx,
-      id: id,
-      request: request,
-      timeout_ms: 5000,
-    )
+  log.info(request_ctx.logger, "walker_create_start", [
+    #("search_id", id),
+    #("service", create_appointment.service),
+  ])
+  let actor_result = search_actor.create_and_call(ctx, id, request)
 
-  case actor_result {
+  let response = case actor_result {
     Ok(search_actor.SearchComplete(result)) ->
-      httpx.as_json_ok([
-        #("status", json.string("completed")),
-        #("id", json.string(id)),
-        #("message", json.string(result)),
-      ])
+      charon.CreateAppointmentResponse(
+        status: charon.ResponseCompleted,
+        id: id,
+        message: result,
+      )
     Error(_subject) ->
-      httpx.as_json_ok([
-        #("status", json.string("processing")),
-        #("id", json.string(id)),
-        #("message", json.string("Search is being processed in the background")),
-      ])
+      charon.CreateAppointmentResponse(
+        status: charon.ResponseProcessing,
+        id: id,
+        message: "Search is being processed in the background",
+      )
   }
+
+  let json =
+    response
+    |> charon.encode_create_appointment_response()
+    |> json.to_string()
+
+  wisp.ok() |> wisp.json_body(json)
 }
 
 fn handle_walker_rerun_for_user(
@@ -126,7 +139,12 @@ fn handle_walker_rerun_for_user(
   )
 
   case details.record.user_email == request_context.user_email {
-    False -> httpx.as_json([#("error", json.string("Not authorized"))], 403)
+    False -> {
+      log.warn(request_context.logger, "walker_rerun_unauthorized", [
+        #("old_search_id", old_id),
+      ])
+      httpx.as_json([#("error", json.string("Not authorized"))], 403)
+    }
     True -> {
       let new_request =
         search_handler.AppointmentRequest(
@@ -139,7 +157,10 @@ fn handle_walker_rerun_for_user(
       let new_id = uuid.v4_string()
       search_registry.delete_search(ctx.actors.search_registry, old_id)
       let _ = search_actor.create_actor(ctx, new_id, new_request)
-      io.println("Rerun started: " <> new_id)
+      log.info(request_context.logger, "walker_rerun_started", [
+        #("old_search_id", old_id),
+        #("new_search_id", new_id),
+      ])
       httpx.as_json_ok([
         #("status", json.string("processing")),
         #("id", json.string(new_id)),
@@ -160,10 +181,9 @@ fn handle_walker_get_for_user(
     )
 
   use results <- httpx.try_result(get_user_result, fn() {
+    log.error(request_context.logger, "walker_get_failed", [])
     httpx.as_json(
-      [
-        #("error", json.string("Failed to retrieve search results")),
-      ],
+      [#("error", json.string("Failed to retrieve search results"))],
       status: 500,
     )
   })
@@ -172,41 +192,8 @@ fn handle_walker_get_for_user(
     dict.to_list(results)
     |> json.array(fn(entry) {
       let #(id, record) = entry
-      search_record_to_json(id, record)
+      jsonx.search_record_to_json(id, record)
     })
 
   httpx.as_json_ok([#("searches", searches_json)])
-}
-
-fn search_record_to_json(
-  id: String,
-  record: search_registry.SearchRecord,
-) -> json.Json {
-  json.object([
-    #("id", json.string(id)),
-    #("service", json.string(record.service)),
-    #(
-      "doctor",
-      json.object([
-        #("firstName", json.string(record.doctor.first_name)),
-        #("lastName", json.string(record.doctor.last_name)),
-      ]),
-    ),
-    #("status", search_status_to_json(record.status)),
-    #(
-      "timestamp",
-      json.string(search_registry.format_timestamp(record.timestamp)),
-    ),
-    #("notificationEmail", json.string(record.notification_email)),
-  ])
-}
-
-fn search_status_to_json(status: search_registry.SearchStatus) -> json.Json {
-  case status {
-    search_registry.NoResult -> types.encode_search_status(types.NoResult)
-    search_registry.Processing(attempts, last_message) ->
-      types.encode_search_status(types.Processing(attempts, last_message))
-    search_registry.HasResult(terms) ->
-      types.encode_search_status(types.Completed(terms))
-  }
 }

@@ -7,15 +7,15 @@ import ui_types.{type Model, type Msg}
 pub fn view(model: Model) -> Element(Msg) {
   form(
     [
-      class("bg-white rounded-xl shadow-sm border border-slate-200 p-6"),
+      class("bg-surface rounded-xl shadow-sm border border-hl-med p-6"),
       on_submit(fn(_) { ui_types.EmailForm(ui_types.EmailSubmit) }),
     ],
     [
-      h2([class("text-lg font-semibold text-slate-800 mb-4")], [
+      h2([class("text-lg font-semibold text-text mb-4")], [
         text("Enter your email"),
       ]),
       div([], [
-        label([class("block text-sm font-medium text-slate-700 mb-1")], [
+        label([class("block text-sm font-medium text-subtle mb-1")], [
           text("Email"),
         ]),
         input([
@@ -23,7 +23,7 @@ pub fn view(model: Model) -> Element(Msg) {
           value(model.user_email),
           placeholder("you@example.com"),
           class(
-            "w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400",
+            "w-full px-3 py-2 bg-base border border-hl-high rounded-lg text-sm text-text focus:outline-none focus:ring-2 focus:ring-pine focus:border-pine placeholder:text-muted",
           ),
           on_input(fn(v) { ui_types.EmailForm(ui_types.EmailInput(v)) }),
         ]),
@@ -32,7 +32,7 @@ pub fn view(model: Model) -> Element(Msg) {
         [
           type_("submit"),
           class(
-            "mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer",
+            "mt-6 w-full bg-pine hover:bg-foam text-surface font-medium py-2.5 px-4 rounded-lg transition-colors cursor-pointer",
           ),
         ],
         [text("Continue")],

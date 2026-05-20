@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+@theme {
+  --color-base: #faf4ed;
+  --color-surface: #fffaf3;
+  --color-overlay: #f2e9e1;
+  --color-muted: #9893a5;
+  --color-subtle: #797593;
+  --color-text: #575279;
+  --color-love: #b4637a;
+  --color-gold: #ea9d34;
+  --color-rose: #d7827e;
+  --color-pine: #286983;
+  --color-foam: #56949f;
+  --color-iris: #907aa9;
+  --color-hl-low: #f4ede8;
+  --color-hl-med: #dfdad9;
+  --color-hl-high: #cecacd;
+}

@@ -2,7 +2,6 @@ import clients/luxmed_client.{
   type Doctor, type LuxmedClient, type ServiceVariant, type TermForDay,
 }
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, Some}
 import gleam/result
@@ -10,7 +9,8 @@ import gleam/string
 import gleam/time/calendar
 import gleam/time/duration
 import gleam/time/timestamp
-import shared/types.{type Doctor as SharedDoctor}
+import shared/charon.{type Doctor as SharedDoctor}
+import utils/log.{type Logger}
 
 pub type AppointmentRequest {
   AppointmentRequest(
@@ -22,16 +22,14 @@ pub type AppointmentRequest {
   )
 }
 
-pub fn print_request(request: AppointmentRequest) -> Nil {
-  io.println("=== Appointment Request ===")
-  io.println("Login: " <> request.login)
-  io.println("Password: *****")
-  io.println("Service: " <> request.service)
-  io.println(
-    "Doctor: " <> request.doctor.first_name <> " " <> request.doctor.last_name,
-  )
-  io.println("Email: " <> request.notification_email)
-  io.println("===========================")
+pub fn log_request(logger: Logger, request: AppointmentRequest) -> Nil {
+  log.info(logger, "appointment_request", [
+    #("login", request.login),
+    #("service", request.service),
+    #("doctor_first_name", request.doctor.first_name),
+    #("doctor_last_name", request.doctor.last_name),
+    #("notification_email", request.notification_email),
+  ])
 }
 
 pub type SearchError {
@@ -75,6 +73,7 @@ fn try_api(
 }
 
 fn find_service_variant(
+  logger: Logger,
   client: luxmed_client.LuxmedClient,
   request: AppointmentRequest,
 ) {
@@ -83,11 +82,12 @@ fn find_service_variant(
     VariantNotFound,
   )
 
-  io.println("Variant found: " <> variant.name)
+  log.info(logger, "luxmed_variant_found", [#("variant", variant.name)])
   Ok(variant)
 }
 
 fn find_doctor(
+  logger: Logger,
   client: luxmed_client.LuxmedClient,
   variant: luxmed_client.ServiceVariant,
   request: AppointmentRequest,
@@ -102,7 +102,11 @@ fn find_doctor(
     DoctorNotFound,
   )
 
-  io.println("Variant found: " <> variant.name)
+  log.info(logger, "luxmed_doctor_found", [
+    #("variant", variant.name),
+    #("doctor_first_name", request.doctor.first_name),
+    #("doctor_last_name", request.doctor.last_name),
+  ])
   Ok(doctor)
 }
 
@@ -152,6 +156,7 @@ fn filter_and_remove_empty(
 }
 
 fn search_for_visits(
+  logger: Logger,
   client: luxmed_client.LuxmedClient,
   variant: luxmed_client.ServiceVariant,
   doctor: luxmed_client.Doctor,
@@ -175,45 +180,49 @@ fn search_for_visits(
     ),
     VisitsNotFound,
   )
-  io.println("Terms found: " <> list.length(terms) |> int.to_string)
+  log.info(logger, "luxmed_terms_found", [
+    #("terms", int.to_string(list.length(terms))),
+    #("from", today),
+    #("to", two_weeks_from_now),
+  ])
   Ok(terms)
 }
 
 fn create_client(
+  logger: Logger,
   request: AppointmentRequest,
 ) -> Result(luxmed_client.LuxmedClient, SearchError) {
   use client <- result.try(
     luxmed_client.login(request.login, request.password)
     |> result.map_error(fn(error) {
-      case error {
-        luxmed_client.Unauthorized(message) ->
-          io.println("Login error: " <> message)
-        luxmed_client.RequestFailed(message) ->
-          io.println("Login error: " <> message)
-        luxmed_client.ParseError(message) ->
-          io.println("Login error: " <> message)
-        luxmed_client.NotFound(resource) ->
-          io.println("Login error: " <> resource)
+      let reason = case error {
+        luxmed_client.Unauthorized(message) -> message
+        luxmed_client.RequestFailed(message) -> message
+        luxmed_client.ParseError(message) -> message
+        luxmed_client.NotFound(resource) -> resource
       }
-
+      log.warn(logger, "luxmed_login_failed", [#("reason", reason)])
       to_search_error(error, Unknown("Unknown login error"))
     }),
   )
 
-  io.println("Logged in to Luxmed")
+  log.info(logger, "luxmed_login_ok", [])
   Ok(client)
 }
 
 pub fn handle_search(
+  logger: Logger,
   request: AppointmentRequest,
 ) -> Result(List(TermForDay), SearchError) {
-  use client: LuxmedClient <- result.try(create_client(request))
+  use client: LuxmedClient <- result.try(create_client(logger, request))
   use variant: ServiceVariant <- result.try(find_service_variant(
+    logger,
     client,
     request,
   ))
-  use doctor: Doctor <- result.try(find_doctor(client, variant, request))
+  use doctor: Doctor <- result.try(find_doctor(logger, client, variant, request))
   use terms: List(TermForDay) <- result.try(search_for_visits(
+    logger,
     client,
     variant,
     doctor,

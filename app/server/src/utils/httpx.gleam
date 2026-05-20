@@ -1,6 +1,6 @@
 import gleam/dynamic/decode
-import gleam/io
 import gleam/json.{type Json}
+import utils/log.{type Logger}
 import wisp
 
 pub type Test
@@ -26,6 +26,7 @@ pub fn as_json(entries entries: List(#(String, Json)), status status: Int) {
 }
 
 pub fn decode_json_body(
+  logger: Logger,
   req: wisp.Request,
   decoder: decode.Decoder(a),
   callback: fn(a) -> wisp.Response,
@@ -34,7 +35,7 @@ pub fn decode_json_body(
   case decode.run(json_body, decoder) {
     Ok(value) -> callback(value)
     Error(_) -> {
-      io.println("Invalid JSON")
+      log.warn(logger, "json_decode_failed", [])
       json_error("Invalid JSON")
     }
   }

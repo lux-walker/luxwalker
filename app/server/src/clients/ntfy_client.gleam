@@ -2,7 +2,7 @@ import gleam/bool
 import gleam/http
 import gleam/http/request
 import gleam/httpc
-import gleam/io
+import utils/log.{type Logger}
 
 pub type NtfyClient {
   NtfyClient(
@@ -12,26 +12,32 @@ pub type NtfyClient {
 }
 
 pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
-  io.println("Sending notifications enabled: " <> skip |> bool.to_string)
+  let logger = log.root([#("component", "ntfy_client")])
+  log.info(logger, "ntfy_client_created", [
+    #("enabled", bool.to_string(!skip)),
+    #("topic", topic),
+  ])
   case skip {
     True ->
       NtfyClient(
         send_appointment_found: fn(_, _) {
-          io.println(
-            "Ntfy: Skipping appointment found (notifications disabled)",
-          )
+          log.info(logger, "ntfy_skipped", [#("kind", "appointment_found")])
         },
         send_search_started: fn(_, _) {
-          io.println("Ntfy: Skipping search started (notifications disabled)")
+          log.info(logger, "ntfy_skipped", [#("kind", "search_started")])
         },
       )
     False ->
       NtfyClient(
         send_appointment_found: fn(service, doctor) {
-          io.println(
-            "Ntfy: Sending appointment found notification to " <> topic,
-          )
+          log.info(logger, "ntfy_sending", [
+            #("kind", "appointment_found"),
+            #("topic", topic),
+            #("service", service),
+            #("doctor", doctor),
+          ])
           send(
+            logger,
             topic,
             "Nowe terminy w Luxmedzie!",
             "Nowe terminy " <> service <> " u lekarza " <> doctor,
@@ -40,8 +46,14 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
           )
         },
         send_search_started: fn(service, doctor) {
-          io.println("Ntfy: Sending search started notification to " <> topic)
+          log.info(logger, "ntfy_sending", [
+            #("kind", "search_started"),
+            #("topic", topic),
+            #("service", service),
+            #("doctor", doctor),
+          ])
           send(
+            logger,
             topic,
             "Nowe wyszukiwanie w Luxmedzie",
             "Rozpoczęto wyszukiwanie " <> service <> " u lekarza " <> doctor,
@@ -54,6 +66,7 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
 }
 
 fn send(
+  logger: Logger,
   topic: String,
   title: String,
   body: String,
@@ -64,7 +77,7 @@ fn send(
 
   case request.to(url) {
     Error(_) -> {
-      io.println("Ntfy: Failed to build request for topic " <> topic)
+      log.error(logger, "ntfy_request_build_failed", [#("topic", topic)])
       Nil
     }
     Ok(req) -> {
@@ -78,11 +91,11 @@ fn send(
 
       case httpc.send(req) {
         Ok(_) -> {
-          io.println("Ntfy: Notification sent to topic " <> topic)
+          log.info(logger, "ntfy_sent", [#("topic", topic)])
           Nil
         }
         Error(_) -> {
-          io.println("Ntfy: Failed to send notification to topic " <> topic)
+          log.error(logger, "ntfy_send_failed", [#("topic", topic)])
           Nil
         }
       }
