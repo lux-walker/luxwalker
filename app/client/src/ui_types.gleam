@@ -1,9 +1,9 @@
 import gleam/option.{type Option}
 import routing.{type Route}
 import rsvp
-import shared/types.{
-  type AppSettings, type CreateAppointmentRequest, type SearchSummary,
-  CreateAppointmentRequest, Doctor,
+import shared/charon.{
+  type AppSettings, type CreateAppointmentRequest, type CreateAppointmentResponse,
+  type SearchSummary, CreateAppointmentRequest, Doctor,
 }
 
 pub fn empty_form() -> CreateAppointmentRequest {
@@ -62,7 +62,7 @@ pub type AppointmentFormAction {
 }
 
 pub type HttpRequest {
-  SearchRequestSubmitted(Result(String, rsvp.Error))
+  SearchRequestSubmitted(Result(CreateAppointmentResponse, rsvp.Error))
   SearchesFetched(Result(List(SearchSummary), rsvp.Error))
   ConfigFetched(Result(AppSettings, rsvp.Error))
   SearchRerun(Result(String, rsvp.Error))

@@ -3,7 +3,7 @@ import gleam/http/request
 import gleam/json
 import lustre/effect.{type Effect}
 import rsvp
-import shared/types.{type CreateAppointmentRequest}
+import shared/charon.{type CreateAppointmentRequest}
 import ui_types.{type Msg, OnHttpRequest}
 
 fn send_relative(
@@ -25,7 +25,7 @@ pub fn fetch_config() -> Effect(Msg) {
   send_relative(
     "/api/config",
     fn(r) { r },
-    rsvp.expect_json(types.app_settings_decoder(), fn(result) {
+    rsvp.expect_json(charon.app_settings_decoder(), fn(result) {
       OnHttpRequest(ui_types.ConfigFetched(result))
     }),
   )
@@ -35,7 +35,7 @@ pub fn fetch_searches(user_email: String) -> Effect(Msg) {
   send_relative(
     "/api/walker",
     fn(r) { request.set_header(r, "x-user-email", user_email) },
-    rsvp.expect_json(types.searches_decoder(), fn(result) {
+    rsvp.expect_json(charon.searches_decoder(), fn(result) {
       OnHttpRequest(ui_types.SearchesFetched(result))
     }),
   )
@@ -49,7 +49,7 @@ pub fn rerun_search(id: String, user_email: String) -> Effect(Msg) {
       |> request.set_method(http.Post)
       |> request.set_header("x-user-email", user_email)
     },
-    rsvp.expect_json(types.post_search_response_decoder(), fn(result) {
+    rsvp.expect_json(charon.post_search_response_decoder(), fn(result) {
       OnHttpRequest(ui_types.SearchRerun(result))
     }),
   )
@@ -59,7 +59,7 @@ pub fn post_search(
   form: CreateAppointmentRequest,
   user_email: String,
 ) -> Effect(Msg) {
-  let body = types.encode_create_appointment_request(form)
+  let body = charon.encode_create_appointment_request(form)
   send_relative(
     "/api/walker",
     fn(r) {
@@ -69,7 +69,7 @@ pub fn post_search(
       |> request.set_header("content-type", "application/json")
       |> request.set_body(json.to_string(body))
     },
-    rsvp.expect_json(types.post_search_response_decoder(), fn(result) {
+    rsvp.expect_json(charon.create_appointment_response_decoder(), fn(result) {
       OnHttpRequest(ui_types.SearchRequestSubmitted(result))
     }),
   )
