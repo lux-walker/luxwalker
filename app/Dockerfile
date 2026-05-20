@@ -3,8 +3,9 @@ FROM erlang:27-alpine AS builder
 
 ARG GLEAM_VERSION=v1.14.0
 
-# Install build dependencies (includes Node.js for client build)
-RUN apk add --no-cache curl tar nodejs npm
+# Install build dependencies (libstdc++/libgcc are required by Bun on Alpine,
+# which lustre/dev downloads to bundle the client)
+RUN apk add --no-cache curl tar nodejs npm libstdc++ libgcc
 
 # Install Gleam
 RUN curl -fsSL -o gleam.tar.gz https://github.com/gleam-lang/gleam/releases/download/${GLEAM_VERSION}/gleam-${GLEAM_VERSION}-x86_64-unknown-linux-musl.tar.gz \
