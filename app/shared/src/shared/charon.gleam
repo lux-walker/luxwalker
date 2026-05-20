@@ -198,3 +198,47 @@ pub fn post_search_response_decoder() -> decode.Decoder(String) {
   use status <- decode.field("status", decode.string)
   decode.success(status)
 }
+
+pub type CreateAppointmentResponseStatus {
+  ResponseCompleted
+  ResponseProcessing
+}
+
+pub type CreateAppointmentResponse {
+  CreateAppointmentResponse(
+    status: CreateAppointmentResponseStatus,
+    id: String,
+    message: String,
+  )
+}
+
+pub fn encode_create_appointment_response(
+  response: CreateAppointmentResponse,
+) -> json.Json {
+  let status = case response.status {
+    ResponseCompleted -> "completed"
+    ResponseProcessing -> "processing"
+  }
+  json.object([
+    #("status", json.string(status)),
+    #("id", json.string(response.id)),
+    #("message", json.string(response.message)),
+  ])
+}
+
+pub fn create_appointment_response_decoder() -> decode.Decoder(
+  CreateAppointmentResponse,
+) {
+  use status <- decode.field("status", decode.string)
+  use id <- decode.field("id", decode.string)
+  use message <- decode.field("message", decode.string)
+  let parsed_status = case status {
+    "completed" -> ResponseCompleted
+    _ -> ResponseProcessing
+  }
+  decode.success(CreateAppointmentResponse(
+    status: parsed_status,
+    id:,
+    message:,
+  ))
+}
