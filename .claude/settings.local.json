@@ -19,7 +19,10 @@
       "Bash(kill -9 38951 38952 38976 39055 38962 38963 39581 39611 39850 39851 39857 39864)",
       "Bash(ps -p 38951,38952,38976,39055,38962,38963,39581,39611,39850,39851,39857,39864 -o pid,stat)",
       "Bash(command -v lsof fuser ss pkill pgrep)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git config *)",
+      "Bash(git push *)"
     ]
   }
 }

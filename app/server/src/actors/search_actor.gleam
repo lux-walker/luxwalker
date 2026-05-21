@@ -277,11 +277,14 @@ fn init(
 ) -> actor.Next(State, Message) {
   log.info(state.logger, "actor_initialized", [])
   search_handler.log_request(state.logger, state.request)
+
+  actor.continue(State(..state, self: self))
+}
+
+fn register_and_notify(state: State) -> Nil {
   state.registry.register()
   log.info(state.logger, "actor_registered", [])
   state.notifier.on_started()
-
-  actor.continue(State(..state, self: self))
 }
 
 fn terms_to_result_list(
@@ -314,6 +317,7 @@ fn search(
       log.info(state.logger, "actor_search_complete", [
         #("terms", int.to_string(count)),
       ])
+      register_and_notify(state)
       record_pipeline_outcome(state, pipeline)
       process.send(
         reply_subject,
@@ -329,6 +333,7 @@ fn search(
         search_handler.VisitsNotFound -> {
           log.info(state.logger, "actor_no_visits_scheduled_retry", [])
 
+          register_and_notify(state)
           let new_attempt = state.attempt + 1
           new_attempt |> state.registry.attempt_failed("Visits not found")
 
