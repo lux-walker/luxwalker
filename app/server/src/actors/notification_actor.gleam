@@ -11,6 +11,13 @@ pub type Message {
     service: String,
     doctor_name: String,
   )
+  TermLocked(
+    notification_email: String,
+    service: String,
+    doctor_name: String,
+    clinic: String,
+    date_time: String,
+  )
 }
 
 pub type State {
@@ -58,6 +65,24 @@ pub fn send_appointment_found(
   |> process.send(AppointmentFound(notification_email, service, doctor_name))
 }
 
+pub fn send_term_locked(
+  notifier: process.Subject(Message),
+  notification_email: String,
+  service: String,
+  doctor_name: String,
+  clinic: String,
+  date_time: String,
+) -> Nil {
+  notifier
+  |> process.send(TermLocked(
+    notification_email,
+    service,
+    doctor_name,
+    clinic,
+    date_time,
+  ))
+}
+
 fn handle_message(state: State, message: Message) -> actor.Next(State, Message) {
   case message {
     SearchStarted(service, doctor_name) -> {
@@ -70,6 +95,17 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
         notification_email,
         service,
         doctor_name,
+      )
+      actor.continue(state)
+    }
+    TermLocked(notification_email, service, doctor_name, clinic, date_time) -> {
+      state.ntfy.send_term_locked(service, doctor_name, clinic, date_time)
+      state.email.send_term_locked(
+        notification_email,
+        service,
+        doctor_name,
+        clinic,
+        date_time,
       )
       actor.continue(state)
     }

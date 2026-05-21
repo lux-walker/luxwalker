@@ -1,7 +1,7 @@
 import actors/notification_actor
 import actors/search_registry
 import app_context.{type AppContext}
-import clients/luxmed_client
+import clients/luxmed_client.{type LuxmedClient}
 import config.{Development, Production}
 import gleam/erlang/process
 import gleam/int
@@ -11,8 +11,13 @@ import gleam/otp/actor
 import gleam/result
 import gleam/time/calendar
 import gleam/time/timestamp
+import handlers/confirm_handler
+import handlers/lock_term_handler
 import handlers/search_handler.{type AppointmentRequest}
-import shared/charon.{type TermResult, TermResult}
+import shared/charon.{
+  type BookingOutcome, type TermResult, BookingCreated, BookingFailed,
+  BookingNone, TermResult,
+}
 import utils/log.{type Logger}
 
 const one_minute_ms = 60_000
@@ -30,7 +35,16 @@ pub type Message {
 }
 
 pub type SearchResult {
-  SearchComplete(result: String)
+  SearchComplete(result: String, booking: BookingOutcome)
+  SearchFailed(reason: String)
+}
+
+type PipelineSuccess {
+  PipelineSuccess(
+    terms: List(TermResult),
+    booking: BookingOutcome,
+    candidate: option.Option(charon.ReservationCandidate),
+  )
 }
 
 type State {
@@ -48,7 +62,11 @@ type State {
 }
 
 type Notifier {
-  Notifier(on_started: fn() -> Nil, on_appointment_found: fn() -> Nil)
+  Notifier(
+    on_started: fn() -> Nil,
+    on_appointment_found: fn() -> Nil,
+    on_term_locked: fn(String, String) -> Nil,
+  )
 }
 
 fn build_notifier(
@@ -72,6 +90,16 @@ fn build_notifier(
         doctor_name,
       )
     },
+    on_term_locked: fn(clinic, date_time) {
+      notification_actor.send_term_locked(
+        notification,
+        request.notification_email,
+        request.service,
+        doctor_name,
+        clinic,
+        date_time,
+      )
+    },
   )
 }
 
@@ -79,6 +107,9 @@ type Registry {
   Registry(
     register: fn() -> Nil,
     completed: fn(List(TermResult)) -> Nil,
+    booked: fn(List(TermResult), charon.BookingInfo) -> Nil,
+    awaiting_confirmation: fn(List(TermResult), charon.ReservationCandidate) ->
+      Nil,
     attempt_failed: fn(Int, String) -> Nil,
   )
 }
@@ -102,6 +133,17 @@ fn build_registry(
     },
     completed: fn(terms) {
       search_registry.request_completed(registry, id, terms)
+    },
+    booked: fn(terms, booking) {
+      search_registry.request_booked(registry, id, terms, booking)
+    },
+    awaiting_confirmation: fn(terms, candidate) {
+      search_registry.request_awaiting_confirmation(
+        registry,
+        id,
+        terms,
+        candidate,
+      )
     },
     attempt_failed: fn(attempts, message) {
       search_registry.request_attempt_failed(registry, id, attempts, message)
@@ -138,14 +180,14 @@ fn send_continue_after(state: State) {
 }
 
 fn error_to_search_complete(error: search_handler.SearchError) -> SearchResult {
-  case error {
+  let reason = case error {
     search_handler.AuthenticationFailed -> "Authentication failed"
     search_handler.DoctorNotFound -> "Doctor not found"
-    search_handler.VariantNotFound -> "Variant not found"
+    search_handler.VariantNotFound -> "Service not found"
     search_handler.VisitsNotFound -> "Visits not found"
-    search_handler.Unknown(message) -> "Unknown error: " <> message
+    search_handler.Unknown(m) -> "Unknown error: " <> m
   }
-  |> SearchComplete
+  SearchFailed(reason)
 }
 
 fn log_search_error(state: State, error: search_handler.SearchError) -> Nil {
@@ -170,7 +212,7 @@ pub fn create_and_call(
 ) -> Result(SearchResult, process.Subject(Message)) {
   let assert Ok(started) = create_actor(context, id, request)
   let subject = started.data
-  let timeout_ms = 5000
+  let timeout_ms = 30_000
   let result = try_call(subject, timeout_ms, Search)
 
   case result {
@@ -266,17 +308,19 @@ fn search(
     #("attempt", int.to_string(state.attempt)),
   ])
 
-  case search_handler.handle_search(state.logger, state.request) {
-    Ok(terms) -> {
-      let term_results = terms_to_result_list(terms)
-      let count = list.length(term_results)
+  case search_and_create(state) {
+    Ok(pipeline) -> {
+      let count = list.length(pipeline.terms)
       log.info(state.logger, "actor_search_complete", [
         #("terms", int.to_string(count)),
       ])
-      state.registry.completed(term_results)
+      record_pipeline_outcome(state, pipeline)
       process.send(
         reply_subject,
-        SearchComplete("Found " <> int.to_string(count) <> " terms"),
+        SearchComplete(
+          "Found " <> int.to_string(count) <> " terms",
+          pipeline.booking,
+        ),
       )
       actor.stop()
     }
@@ -289,7 +333,10 @@ fn search(
           new_attempt |> state.registry.attempt_failed("Visits not found")
 
           reply_subject
-          |> process.send(SearchComplete("No visits, request scheduled"))
+          |> process.send(SearchComplete(
+            "No visits, request scheduled",
+            BookingNone,
+          ))
 
           let new_state = State(..state, attempt: new_attempt)
           send_continue_after(new_state)
@@ -308,13 +355,10 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
   log.info(state.logger, "actor_processing_again", [
     #("attempt", int.to_string(state.attempt)),
   ])
-  case search_handler.handle_search(state.logger, state.request) {
-    Ok(terms) -> {
+  case search_and_create(state) {
+    Ok(pipeline) -> {
       log.info(state.logger, "actor_processing_complete", [])
-      state.notifier.on_appointment_found()
-
-      let term_results = terms_to_result_list(terms)
-      state.registry.completed(term_results)
+      record_pipeline_outcome(state, pipeline)
       log.info(state.logger, "actor_request_completed", [])
       actor.stop()
     }
@@ -329,6 +373,151 @@ fn continue_processing(state: State) -> actor.Next(State, Message) {
 
       send_continue_after(state)
       actor.continue(State(..state, attempt: new_attempt))
+    }
+  }
+}
+
+fn record_pipeline_outcome(state: State, pipeline: PipelineSuccess) -> Nil {
+  case pipeline.booking, pipeline.candidate {
+    BookingCreated(clinic, date_time, doctor), _ ->
+      state.registry.booked(
+        pipeline.terms,
+        charon.BookingInfo(clinic:, date_time:, doctor:),
+      )
+    _, option.Some(candidate) ->
+      state.registry.awaiting_confirmation(pipeline.terms, candidate)
+    _, option.None -> state.registry.completed(pipeline.terms)
+  }
+}
+
+fn search_and_create(
+  state: State,
+) -> Result(PipelineSuccess, search_handler.SearchError) {
+  use client <- result.try(create_luxmed_client(state.logger, state.request))
+  use success <- result.try(search_handler.handle_search(
+    state.logger,
+    client,
+    state.request,
+  ))
+
+  let booking = try_lock_and_confirm(state, client, success)
+  let candidate = case booking {
+    BookingNone -> first_candidate(success.variant, success.terms)
+    _ -> option.None
+  }
+
+  Ok(PipelineSuccess(
+    terms: terms_to_result_list(success.terms),
+    booking:,
+    candidate:,
+  ))
+}
+
+fn try_lock_and_confirm(
+  state: State,
+  client: LuxmedClient,
+  success: search_handler.SearchSuccess,
+) -> BookingOutcome {
+  case
+    lock_term_handler.handle_lock_term(
+      state.logger,
+      client,
+      success.variant,
+      success.terms,
+    )
+  {
+    option.None -> {
+      state.notifier.on_appointment_found()
+      BookingNone
+    }
+    option.Some(locked) ->
+      confirm_locked(state, client, success.variant, locked)
+  }
+}
+
+fn confirm_locked(
+  state: State,
+  client: LuxmedClient,
+  variant: luxmed_client.ServiceVariant,
+  locked: lock_term_handler.LockedTerm,
+) -> BookingOutcome {
+  case
+    confirm_handler.handle_confirm(
+      state.logger,
+      client,
+      variant,
+      locked.term,
+      locked.response,
+    )
+  {
+    True -> {
+      state.notifier.on_term_locked(
+        locked.term.clinic,
+        locked.term.date_time_from,
+      )
+      BookingCreated(
+        clinic: locked.term.clinic,
+        date_time: locked.term.date_time_from,
+        doctor: option.unwrap(locked.term.doctor.first_name, "")
+          <> " "
+          <> option.unwrap(locked.term.doctor.last_name, ""),
+      )
+    }
+    False -> {
+      state.notifier.on_appointment_found()
+      BookingFailed
+    }
+  }
+}
+
+fn first_candidate(
+  variant: luxmed_client.ServiceVariant,
+  terms_for_days: List(luxmed_client.TermForDay),
+) -> option.Option(charon.ReservationCandidate) {
+  case list.flat_map(terms_for_days, fn(d) { d.terms }) {
+    [] -> option.None
+    [term, ..] ->
+      option.Some(charon.ReservationCandidate(
+        service_variant_id: variant.id,
+        service_variant_name: variant.name,
+        facility_id: term.clinic_id,
+        facility_name: term.clinic,
+        room_id: term.room_id,
+        schedule_id: term.schedule_id,
+        date_time_from: term.date_time_from,
+        date_time_to: term.date_time_to,
+        doctor_id: term.doctor.id,
+        doctor_academic_title: option.unwrap(term.doctor.academic_title, ""),
+        doctor_first_name: option.unwrap(term.doctor.first_name, ""),
+        doctor_last_name: option.unwrap(term.doctor.last_name, ""),
+      ))
+  }
+}
+
+fn create_luxmed_client(
+  logger: Logger,
+  request: AppointmentRequest,
+) -> Result(LuxmedClient, search_handler.SearchError) {
+  case luxmed_client.login(request.login, request.password) {
+    Ok(client) -> {
+      log.info(logger, "luxmed_login_ok", [])
+      Ok(client)
+    }
+    Error(err) -> {
+      let #(reason, search_err) = case err {
+        luxmed_client.Unauthorized(m) -> #(
+          m,
+          search_handler.AuthenticationFailed,
+        )
+        luxmed_client.RequestFailed(m) -> #(m, search_handler.Unknown(m))
+        luxmed_client.ParseError(m) -> #(m, search_handler.Unknown(m))
+        luxmed_client.NotFound(r) -> #(
+          r,
+          search_handler.Unknown("Login: " <> r),
+        )
+      }
+      log.warn(logger, "luxmed_login_failed", [#("reason", reason)])
+      Error(search_err)
     }
   }
 }

@@ -14,6 +14,11 @@ pub type SearchStatus {
   NoResult
   Processing(attempts: Int, last_message: String)
   HasResult(terms: List(charon.TermResult))
+  Booked(terms: List(charon.TermResult), booking: charon.BookingInfo)
+  AwaitingConfirmation(
+    terms: List(charon.TermResult),
+    candidate: charon.ReservationCandidate,
+  )
 }
 
 pub type SearchRecord {
@@ -64,6 +69,16 @@ pub type Message {
   )
   AttemptFailed(id: String, attempts: Int, last_message: String)
   Completed(id: String, terms: List(charon.TermResult))
+  BookingConfirmed(
+    id: String,
+    terms: List(charon.TermResult),
+    booking: charon.BookingInfo,
+  )
+  AwaitingConfirmationStored(
+    id: String,
+    terms: List(charon.TermResult),
+    candidate: charon.ReservationCandidate,
+  )
   Delete(id: String)
   GetResult(id: String, reply_with: process.Subject(SearchRecord))
   GetRequestDetails(
@@ -130,6 +145,24 @@ pub fn request_completed(
   terms: List(charon.TermResult),
 ) -> Nil {
   process.send(registry, Completed(id, terms))
+}
+
+pub fn request_booked(
+  registry: process.Subject(Message),
+  id: String,
+  terms: List(charon.TermResult),
+  booking: charon.BookingInfo,
+) -> Nil {
+  process.send(registry, BookingConfirmed(id, terms, booking))
+}
+
+pub fn request_awaiting_confirmation(
+  registry: process.Subject(Message),
+  id: String,
+  terms: List(charon.TermResult),
+  candidate: charon.ReservationCandidate,
+) -> Nil {
+  process.send(registry, AwaitingConfirmationStored(id, terms, candidate))
 }
 
 pub fn delete_search(registry: process.Subject(Message), id: String) -> Nil {
@@ -237,6 +270,56 @@ fn handle_message(state: State, message: Message) -> actor.Next(State, Message) 
             SearchRecord(
               ..details.record,
               status: HasResult(terms),
+              timestamp: timestamp.system_time(),
+            )
+          dict.insert(
+            state.results,
+            id,
+            RequestDetails(..details, record: updated_record),
+          )
+        }
+        Error(Nil) -> state.results
+      }
+      actor.continue(State(..state, results: new_results))
+    }
+
+    BookingConfirmed(id, terms, booking) -> {
+      log.info(state.logger, "search_booked", [
+        #("search_id", id),
+        #("terms", int.to_string(list.length(terms))),
+        #("date_time", booking.date_time),
+      ])
+      let new_results = case dict.get(state.results, id) {
+        Ok(details) -> {
+          let updated_record =
+            SearchRecord(
+              ..details.record,
+              status: Booked(terms, booking),
+              timestamp: timestamp.system_time(),
+            )
+          dict.insert(
+            state.results,
+            id,
+            RequestDetails(..details, record: updated_record),
+          )
+        }
+        Error(Nil) -> state.results
+      }
+      actor.continue(State(..state, results: new_results))
+    }
+
+    AwaitingConfirmationStored(id, terms, candidate) -> {
+      log.info(state.logger, "search_awaiting_confirmation", [
+        #("search_id", id),
+        #("terms", int.to_string(list.length(terms))),
+        #("date_time", candidate.date_time_from),
+      ])
+      let new_results = case dict.get(state.results, id) {
+        Ok(details) -> {
+          let updated_record =
+            SearchRecord(
+              ..details.record,
+              status: AwaitingConfirmation(terms, candidate),
               timestamp: timestamp.system_time(),
             )
           dict.insert(

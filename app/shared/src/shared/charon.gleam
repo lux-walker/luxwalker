@@ -70,10 +70,33 @@ pub type TermResult {
   )
 }
 
+pub type BookingInfo {
+  BookingInfo(clinic: String, date_time: String, doctor: String)
+}
+
+pub type ReservationCandidate {
+  ReservationCandidate(
+    service_variant_id: Int,
+    service_variant_name: String,
+    facility_id: Int,
+    facility_name: String,
+    room_id: Int,
+    schedule_id: Int,
+    date_time_from: String,
+    date_time_to: String,
+    doctor_id: Int,
+    doctor_academic_title: String,
+    doctor_first_name: String,
+    doctor_last_name: String,
+  )
+}
+
 pub type SearchStatusDisplay {
   NoResult
   Processing(attempts: Int, last_message: String)
   Completed(terms: List(TermResult))
+  Booked(terms: List(TermResult), booking: BookingInfo)
+  AwaitingConfirmation(terms: List(TermResult), candidate: ReservationCandidate)
 }
 
 pub type SearchSummary {
@@ -99,6 +122,67 @@ pub fn encode_term_result(term: TermResult) -> json.Json {
   ])
 }
 
+pub fn encode_booking_info(b: BookingInfo) -> json.Json {
+  json.object([
+    #("clinic", json.string(b.clinic)),
+    #("dateTime", json.string(b.date_time)),
+    #("doctor", json.string(b.doctor)),
+  ])
+}
+
+fn booking_info_decoder() -> decode.Decoder(BookingInfo) {
+  use clinic <- decode.field("clinic", decode.string)
+  use date_time <- decode.field("dateTime", decode.string)
+  use doctor <- decode.field("doctor", decode.string)
+  decode.success(BookingInfo(clinic:, date_time:, doctor:))
+}
+
+pub fn encode_reservation_candidate(c: ReservationCandidate) -> json.Json {
+  json.object([
+    #("serviceVariantId", json.int(c.service_variant_id)),
+    #("serviceVariantName", json.string(c.service_variant_name)),
+    #("facilityId", json.int(c.facility_id)),
+    #("facilityName", json.string(c.facility_name)),
+    #("roomId", json.int(c.room_id)),
+    #("scheduleId", json.int(c.schedule_id)),
+    #("dateTimeFrom", json.string(c.date_time_from)),
+    #("dateTimeTo", json.string(c.date_time_to)),
+    #("doctorId", json.int(c.doctor_id)),
+    #("doctorAcademicTitle", json.string(c.doctor_academic_title)),
+    #("doctorFirstName", json.string(c.doctor_first_name)),
+    #("doctorLastName", json.string(c.doctor_last_name)),
+  ])
+}
+
+fn reservation_candidate_decoder() -> decode.Decoder(ReservationCandidate) {
+  use service_variant_id <- decode.field("serviceVariantId", decode.int)
+  use service_variant_name <- decode.field("serviceVariantName", decode.string)
+  use facility_id <- decode.field("facilityId", decode.int)
+  use facility_name <- decode.field("facilityName", decode.string)
+  use room_id <- decode.field("roomId", decode.int)
+  use schedule_id <- decode.field("scheduleId", decode.int)
+  use date_time_from <- decode.field("dateTimeFrom", decode.string)
+  use date_time_to <- decode.field("dateTimeTo", decode.string)
+  use doctor_id <- decode.field("doctorId", decode.int)
+  use doctor_academic_title <- decode.field("doctorAcademicTitle", decode.string)
+  use doctor_first_name <- decode.field("doctorFirstName", decode.string)
+  use doctor_last_name <- decode.field("doctorLastName", decode.string)
+  decode.success(ReservationCandidate(
+    service_variant_id:,
+    service_variant_name:,
+    facility_id:,
+    facility_name:,
+    room_id:,
+    schedule_id:,
+    date_time_from:,
+    date_time_to:,
+    doctor_id:,
+    doctor_academic_title:,
+    doctor_first_name:,
+    doctor_last_name:,
+  ))
+}
+
 pub fn encode_search_status(status: SearchStatusDisplay) -> json.Json {
   case status {
     NoResult -> json.object([#("status", json.string("no_result"))])
@@ -112,6 +196,18 @@ pub fn encode_search_status(status: SearchStatusDisplay) -> json.Json {
       json.object([
         #("status", json.string("completed")),
         #("terms", json.array(terms, encode_term_result)),
+      ])
+    Booked(terms, booking) ->
+      json.object([
+        #("status", json.string("booked")),
+        #("terms", json.array(terms, encode_term_result)),
+        #("booking", encode_booking_info(booking)),
+      ])
+    AwaitingConfirmation(terms, candidate) ->
+      json.object([
+        #("status", json.string("awaiting_confirmation")),
+        #("terms", json.array(terms, encode_term_result)),
+        #("candidate", encode_reservation_candidate(candidate)),
       ])
   }
 }
@@ -162,6 +258,19 @@ fn search_status_decoder() -> decode.Decoder(SearchStatusDisplay) {
       use terms <- decode.field("terms", decode.list(term_result_decoder()))
       decode.success(Completed(terms))
     }
+    "booked" -> {
+      use terms <- decode.field("terms", decode.list(term_result_decoder()))
+      use booking <- decode.field("booking", booking_info_decoder())
+      decode.success(Booked(terms, booking))
+    }
+    "awaiting_confirmation" -> {
+      use terms <- decode.field("terms", decode.list(term_result_decoder()))
+      use candidate <- decode.field(
+        "candidate",
+        reservation_candidate_decoder(),
+      )
+      decode.success(AwaitingConfirmation(terms, candidate))
+    }
     _ -> decode.success(NoResult)
   }
 }
@@ -202,6 +311,13 @@ pub fn post_search_response_decoder() -> decode.Decoder(String) {
 pub type CreateAppointmentResponseStatus {
   ResponseCompleted
   ResponseProcessing
+  ResponseFailed(reason: String)
+}
+
+pub type BookingOutcome {
+  BookingNone
+  BookingFailed
+  BookingCreated(clinic: String, date_time: String, doctor: String)
 }
 
 pub type CreateAppointmentResponse {
@@ -209,20 +325,56 @@ pub type CreateAppointmentResponse {
     status: CreateAppointmentResponseStatus,
     id: String,
     message: String,
+    booking: BookingOutcome,
   )
+}
+
+pub fn encode_booking_outcome(b: BookingOutcome) -> json.Json {
+  case b {
+    BookingNone -> json.object([#("status", json.string("none"))])
+    BookingFailed -> json.object([#("status", json.string("failed"))])
+    BookingCreated(clinic, date_time, doctor) ->
+      json.object([
+        #("status", json.string("created")),
+        #("clinic", json.string(clinic)),
+        #("dateTime", json.string(date_time)),
+        #("doctor", json.string(doctor)),
+      ])
+  }
+}
+
+fn booking_outcome_decoder() -> decode.Decoder(BookingOutcome) {
+  use status <- decode.field("status", decode.string)
+  case status {
+    "created" -> {
+      use clinic <- decode.field("clinic", decode.string)
+      use date_time <- decode.field("dateTime", decode.string)
+      use doctor <- decode.field("doctor", decode.string)
+      decode.success(BookingCreated(clinic, date_time, doctor))
+    }
+    "failed" -> decode.success(BookingFailed)
+    _ -> decode.success(BookingNone)
+  }
 }
 
 pub fn encode_create_appointment_response(
   response: CreateAppointmentResponse,
 ) -> json.Json {
-  let status = case response.status {
+  let status_str = case response.status {
     ResponseCompleted -> "completed"
     ResponseProcessing -> "processing"
+    ResponseFailed(_) -> "failed"
+  }
+  let reason = case response.status {
+    ResponseFailed(r) -> r
+    _ -> ""
   }
   json.object([
-    #("status", json.string(status)),
+    #("status", json.string(status_str)),
+    #("reason", json.string(reason)),
     #("id", json.string(response.id)),
     #("message", json.string(response.message)),
+    #("booking", encode_booking_outcome(response.booking)),
   ])
 }
 
@@ -230,15 +382,19 @@ pub fn create_appointment_response_decoder() -> decode.Decoder(
   CreateAppointmentResponse,
 ) {
   use status <- decode.field("status", decode.string)
+  use reason <- decode.field("reason", decode.string)
   use id <- decode.field("id", decode.string)
   use message <- decode.field("message", decode.string)
+  use booking <- decode.field("booking", booking_outcome_decoder())
   let parsed_status = case status {
     "completed" -> ResponseCompleted
+    "failed" -> ResponseFailed(reason)
     _ -> ResponseProcessing
   }
   decode.success(CreateAppointmentResponse(
     status: parsed_status,
     id:,
     message:,
+    booking:,
   ))
 }

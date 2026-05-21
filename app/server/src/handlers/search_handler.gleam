@@ -12,6 +12,10 @@ import gleam/time/timestamp
 import shared/charon.{type Doctor as SharedDoctor}
 import utils/log.{type Logger}
 
+pub type SearchSuccess {
+  SearchSuccess(variant: ServiceVariant, terms: List(TermForDay))
+}
+
 pub type AppointmentRequest {
   AppointmentRequest(
     login: String,
@@ -188,33 +192,11 @@ fn search_for_visits(
   Ok(terms)
 }
 
-fn create_client(
-  logger: Logger,
-  request: AppointmentRequest,
-) -> Result(luxmed_client.LuxmedClient, SearchError) {
-  use client <- result.try(
-    luxmed_client.login(request.login, request.password)
-    |> result.map_error(fn(error) {
-      let reason = case error {
-        luxmed_client.Unauthorized(message) -> message
-        luxmed_client.RequestFailed(message) -> message
-        luxmed_client.ParseError(message) -> message
-        luxmed_client.NotFound(resource) -> resource
-      }
-      log.warn(logger, "luxmed_login_failed", [#("reason", reason)])
-      to_search_error(error, Unknown("Unknown login error"))
-    }),
-  )
-
-  log.info(logger, "luxmed_login_ok", [])
-  Ok(client)
-}
-
 pub fn handle_search(
   logger: Logger,
+  client: LuxmedClient,
   request: AppointmentRequest,
-) -> Result(List(TermForDay), SearchError) {
-  use client: LuxmedClient <- result.try(create_client(logger, request))
+) -> Result(SearchSuccess, SearchError) {
   use variant: ServiceVariant <- result.try(find_service_variant(
     logger,
     client,
@@ -231,6 +213,7 @@ pub fn handle_search(
   let filtered_terms = filter_and_remove_empty(terms, doctor)
   case filtered_terms |> list.length() {
     0 -> Error(VisitsNotFound)
-    _ -> Ok(filtered_terms)
+    _ -> Ok(SearchSuccess(variant:, terms: filtered_terms))
   }
 }
+

@@ -6,6 +6,12 @@ import shared/charon.{
   type SearchSummary, CreateAppointmentRequest, Doctor,
 }
 
+pub type Popup {
+  BookingCreatedPopup(clinic: String, date_time: String, doctor: String)
+  ErrorPopup(message: String)
+  LoadingPopup
+}
+
 pub fn empty_form() -> CreateAppointmentRequest {
   CreateAppointmentRequest(
     password: "",
@@ -22,6 +28,7 @@ pub type Model {
     form: CreateAppointmentRequest,
     user_email: String,
     app_settings: Option(AppSettings),
+    popup: Option(Popup),
   )
 }
 
@@ -66,6 +73,7 @@ pub type HttpRequest {
   SearchesFetched(Result(List(SearchSummary), rsvp.Error))
   ConfigFetched(Result(AppSettings, rsvp.Error))
   SearchRerun(Result(String, rsvp.Error))
+  ReserveSubmitted(Result(CreateAppointmentResponse, rsvp.Error))
 }
 
 pub type EmailFormAction {
@@ -79,4 +87,6 @@ pub type Msg {
   AppointmentForm(AppointmentFormAction)
   EmailForm(EmailFormAction)
   RerunSearch(id: String)
+  ReserveCandidate(id: String)
+  DismissPopup
 }

@@ -8,6 +8,7 @@ pub type NtfyClient {
   NtfyClient(
     send_appointment_found: fn(String, String) -> Nil,
     send_search_started: fn(String, String) -> Nil,
+    send_term_locked: fn(String, String, String, String) -> Nil,
   )
 }
 
@@ -25,6 +26,9 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
         },
         send_search_started: fn(_, _) {
           log.info(logger, "ntfy_skipped", [#("kind", "search_started")])
+        },
+        send_term_locked: fn(_, _, _, _) {
+          log.info(logger, "ntfy_skipped", [#("kind", "term_locked")])
         },
       )
     False ->
@@ -59,6 +63,31 @@ pub fn create_client(topic: String, skip: Bool) -> NtfyClient {
             "Rozpoczęto wyszukiwanie " <> service <> " u lekarza " <> doctor,
             "default",
             "mag",
+          )
+        },
+        send_term_locked: fn(service, doctor, clinic, date_time) {
+          log.info(logger, "ntfy_sending", [
+            #("kind", "term_locked"),
+            #("topic", topic),
+            #("service", service),
+            #("doctor", doctor),
+            #("clinic", clinic),
+            #("date_time", date_time),
+          ])
+          send(
+            logger,
+            topic,
+            "Termin zarezerwowany w Luxmedzie!",
+            "Zarezerwowano "
+              <> service
+              <> " u lekarza "
+              <> doctor
+              <> " w "
+              <> clinic
+              <> " na "
+              <> date_time,
+            "urgent",
+            "lock",
           )
         },
       )

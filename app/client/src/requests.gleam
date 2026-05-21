@@ -74,3 +74,17 @@ pub fn post_search(
     }),
   )
 }
+
+pub fn reserve_candidate(id: String, user_email: String) -> Effect(Msg) {
+  send_relative(
+    "/api/walker/" <> id <> "/reserve",
+    fn(r) {
+      r
+      |> request.set_method(http.Post)
+      |> request.set_header("x-user-email", user_email)
+    },
+    rsvp.expect_json(charon.create_appointment_response_decoder(), fn(result) {
+      OnHttpRequest(ui_types.ReserveSubmitted(result))
+    }),
+  )
+}

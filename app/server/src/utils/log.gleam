@@ -1,4 +1,6 @@
+import gleam/io
 import gleam/list
+import gleam/string
 
 pub opaque type Logger {
   Logger(fields: List(#(String, String)))
@@ -21,7 +23,7 @@ pub fn info(
   event: String,
   extra: List(#(String, String)),
 ) -> Nil {
-  ffi_log_info(event, list.append(logger.fields, extra))
+  emit(green("INFO "), logger, event, extra)
 }
 
 pub fn warn(
@@ -29,7 +31,7 @@ pub fn warn(
   event: String,
   extra: List(#(String, String)),
 ) -> Nil {
-  ffi_log_warn(event, list.append(logger.fields, extra))
+  emit(yellow("WARN "), logger, event, extra)
 }
 
 pub fn error(
@@ -37,7 +39,7 @@ pub fn error(
   event: String,
   extra: List(#(String, String)),
 ) -> Nil {
-  ffi_log_error(event, list.append(logger.fields, extra))
+  emit(red("ERROR"), logger, event, extra)
 }
 
 pub fn debug(
@@ -45,24 +47,48 @@ pub fn debug(
   event: String,
   extra: List(#(String, String)),
 ) -> Nil {
-  ffi_log_debug(event, list.append(logger.fields, extra))
+  emit(gray("DEBUG"), logger, event, extra)
 }
 
-pub fn configure() -> Nil {
-  ffi_configure()
+fn emit(
+  level: String,
+  logger: Logger,
+  event: String,
+  extra: List(#(String, String)),
+) -> Nil {
+  let fields = list.append(logger.fields, extra)
+  let pairs = list.map(fields, fn(kv) { dim(kv.0 <> "=") <> kv.1 })
+  let suffix = case pairs {
+    [] -> ""
+    _ -> " " <> string.join(pairs, " ")
+  }
+  io.println(level <> " " <> bold(event) <> suffix)
 }
 
-@external(erlang, "luxwalker_log_ffi", "log_info")
-fn ffi_log_info(event: String, fields: List(#(String, String))) -> Nil
+const esc = "\u{001b}["
 
-@external(erlang, "luxwalker_log_ffi", "log_warn")
-fn ffi_log_warn(event: String, fields: List(#(String, String))) -> Nil
+const reset = "\u{001b}[0m"
 
-@external(erlang, "luxwalker_log_ffi", "log_error")
-fn ffi_log_error(event: String, fields: List(#(String, String))) -> Nil
+fn bold(s: String) -> String {
+  esc <> "1m" <> s <> reset
+}
 
-@external(erlang, "luxwalker_log_ffi", "log_debug")
-fn ffi_log_debug(event: String, fields: List(#(String, String))) -> Nil
+fn dim(s: String) -> String {
+  esc <> "2m" <> s <> reset
+}
 
-@external(erlang, "luxwalker_log_ffi", "configure")
-fn ffi_configure() -> Nil
+fn red(s: String) -> String {
+  esc <> "31m" <> s <> reset
+}
+
+fn green(s: String) -> String {
+  esc <> "32m" <> s <> reset
+}
+
+fn yellow(s: String) -> String {
+  esc <> "33m" <> s <> reset
+}
+
+fn gray(s: String) -> String {
+  esc <> "90m" <> s <> reset
+}

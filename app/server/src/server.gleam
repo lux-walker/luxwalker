@@ -66,7 +66,6 @@ fn send_ping(logger: log.Logger, environment: config.Environment) -> Nil {
 
 pub fn main() {
   wisp.configure_logger()
-  log.configure()
 
   let root_logger = log.root([#("service", "luxwalker")])
 

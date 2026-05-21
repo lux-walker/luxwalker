@@ -5,10 +5,12 @@ import requests
 import routing.{
   ActiveSearches, CreateSearch, EmailRoute, RequestDetailsRoute, TabRoute,
 }
+import shared/charon
 import ui_types.{
-  type Model, type Msg, AppointmentForm as AppointmentForm,
-  EmailForm as EmailForm, EmailInput, EmailSubmit, Model, OnHttpRequest,
-  OnRouteChange, RerunSearch, Submit, UpdateField,
+  type Model, type Msg, AppointmentForm as AppointmentForm, BookingCreatedPopup,
+  DismissPopup, EmailForm as EmailForm, EmailInput, EmailSubmit, ErrorPopup,
+  LoadingPopup, Model, OnHttpRequest, OnRouteChange, RerunSearch,
+  ReserveCandidate, Submit, UpdateField,
 }
 
 pub fn init(_flags) -> #(Model, Effect(Msg)) {
@@ -34,6 +36,7 @@ pub fn init(_flags) -> #(Model, Effect(Msg)) {
       form: ui_types.empty_form(),
       user_email: email,
       app_settings: None,
+      popup: None,
     ),
     initial_effects,
   )
@@ -71,7 +74,7 @@ fn on_appointment_form_change(
       effect.none(),
     )
     Submit -> #(
-      Model(..model, form: ui_types.empty_form()),
+      Model(..model, popup: Some(LoadingPopup)),
       requests.post_search(model.form, model.user_email),
     )
   }
@@ -82,11 +85,31 @@ fn on_http_request(
   request: ui_types.HttpRequest,
 ) -> #(Model, Effect(Msg)) {
   case request {
-    ui_types.SearchRequestSubmitted(Ok(_)) -> #(
-      model,
-      requests.fetch_searches(model.user_email),
+    ui_types.SearchRequestSubmitted(Ok(response)) ->
+      case response.status {
+        charon.ResponseFailed(reason) -> #(
+          Model(..model, popup: Some(ErrorPopup(reason))),
+          effect.none(),
+        )
+        _ -> {
+          let popup = case response.booking {
+            charon.BookingCreated(clinic, date_time, doctor) ->
+              Some(BookingCreatedPopup(clinic, date_time, doctor))
+            _ -> None
+          }
+          #(
+            Model(..model, form: ui_types.empty_form(), popup: popup),
+            requests.fetch_searches(model.user_email),
+          )
+        }
+      }
+    ui_types.SearchRequestSubmitted(Error(_)) -> #(
+      Model(
+        ..model,
+        popup: Some(ErrorPopup("Request failed. Please try again.")),
+      ),
+      effect.none(),
     )
-    ui_types.SearchRequestSubmitted(Error(_)) -> #(model, effect.none())
     ui_types.SearchesFetched(Ok(searches)) -> #(
       Model(..model, searches: searches),
       effect.none(),
@@ -102,6 +125,31 @@ fn on_http_request(
       requests.fetch_searches(model.user_email),
     )
     ui_types.SearchRerun(Error(_)) -> #(model, effect.none())
+    ui_types.ReserveSubmitted(Ok(response)) ->
+      case response.status {
+        charon.ResponseFailed(reason) -> #(
+          Model(..model, popup: Some(ErrorPopup(reason))),
+          effect.none(),
+        )
+        _ -> {
+          let popup = case response.booking {
+            charon.BookingCreated(clinic, date_time, doctor) ->
+              Some(BookingCreatedPopup(clinic, date_time, doctor))
+            _ -> None
+          }
+          #(
+            Model(..model, popup: popup),
+            requests.fetch_searches(model.user_email),
+          )
+        }
+      }
+    ui_types.ReserveSubmitted(Error(_)) -> #(
+      Model(
+        ..model,
+        popup: Some(ErrorPopup("Reservation failed. Please try again.")),
+      ),
+      effect.none(),
+    )
   }
 }
 
@@ -123,5 +171,10 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     AppointmentForm(action) -> on_appointment_form_change(action, model)
     EmailForm(action) -> on_email_form_change(action, model)
     RerunSearch(id) -> #(model, requests.rerun_search(id, model.user_email))
+    ReserveCandidate(id) -> #(
+      Model(..model, popup: Some(LoadingPopup)),
+      requests.reserve_candidate(id, model.user_email),
+    )
+    DismissPopup -> #(Model(..model, popup: None), effect.none())
   }
 }

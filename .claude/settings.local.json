@@ -1,11 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "mcp__ide__getDiagnostics",
-      "Bash(docker --version)",
-      "Bash(docker info *)",
-      "Bash(python3 -m json.tool)",
-      "Bash(docker exec *)"
+      "Bash(curl -v http://localhost:1234)",
+      "Bash(lsof -iTCP:1234 -sTCP:LISTEN)",
+      "Bash(lsof -iTCP -sTCP:LISTEN)",
+      "Bash(timeout 8 gleam run -m lustre/dev start)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(erl -eval 'erlang:display\\(erlang:system_info\\(otp_release\\)\\), halt\\(\\).' -noshell)",
+      "Bash(gleam build *)",
+      "Bash(git reset *)",
+      "Bash(netstat -tlnp)",
+      "Bash(fuser 8080/tcp)",
+      "Bash(kill 9555 635)",
+      "Bash(kill 9555 9567 636 719 770)",
+      "Bash(ps -p 9555,9567,636,719,770 -o pid,stat,cmd)",
+      "Bash(kill -9 9555 9567 635 636 719 770)",
+      "Bash(ps -p 9555,9567,635,636,719,770 -o pid,stat,cmd)",
+      "Bash(kill -9 38951 38952 38976 39055 38962 38963 39581 39611 39850 39851 39857 39864)",
+      "Bash(ps -p 38951,38952,38976,39055,38962,38963,39581,39611,39850,39851,39857,39864 -o pid,stat)",
+      "Bash(command -v lsof fuser ss pkill pgrep)",
+      "Bash(git add *)"
     ]
   }
 }

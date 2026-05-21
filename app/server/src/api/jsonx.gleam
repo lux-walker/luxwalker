@@ -34,5 +34,9 @@ pub fn search_status_to_json(
       charon.encode_search_status(charon.Processing(attempts, last_message))
     search_registry.HasResult(terms) ->
       charon.encode_search_status(charon.Completed(terms))
+    search_registry.Booked(terms, booking) ->
+      charon.encode_search_status(charon.Booked(terms, booking))
+    search_registry.AwaitingConfirmation(terms, candidate) ->
+      charon.encode_search_status(charon.AwaitingConfirmation(terms, candidate))
   }
 }

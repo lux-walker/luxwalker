@@ -41,7 +41,12 @@ pub type ServiceVariantGroup {
 }
 
 pub type Doctor {
-  Doctor(id: Int, first_name: Option(String), last_name: Option(String))
+  Doctor(
+    id: Int,
+    academic_title: Option(String),
+    first_name: Option(String),
+    last_name: Option(String),
+  )
 }
 
 pub type DoctorRoot {
@@ -72,6 +77,28 @@ pub type SearchVisitRoot {
   SearchVisitRoot(terms_for_service: TermsForService)
 }
 
+pub type Valuation {
+  Valuation(
+    payer_id: Int,
+    contract_id: Int,
+    product_in_contract_id: Int,
+    product_id: Int,
+    product_element_id: Int,
+    require_referral_for_pp: Bool,
+    valuation_type: Int,
+    price: Float,
+    is_referral_required: Bool,
+    is_external_referral_allowed: Bool,
+  )
+}
+
+pub type LockTermResponse {
+  LockTermResponse(
+    temporary_reservation_id: Int,
+    valuations: List(Valuation),
+  )
+}
+
 fn login_decoder() -> decode.Decoder(LoginResponse) {
   use token <- decode.field("token", decode.string)
   decode.success(LoginResponse(token:))
@@ -98,9 +125,13 @@ fn service_variant_group_decoder() -> decode.Decoder(ServiceVariantGroup) {
 
 fn doctor_decoder() -> decode.Decoder(Doctor) {
   use id <- decode.field("id", decode.int)
+  use academic_title <- decode.field(
+    "academicTitle",
+    decode.optional(decode.string),
+  )
   use first_name <- decode.field("firstName", decode.optional(decode.string))
   use last_name <- decode.field("lastName", decode.optional(decode.string))
-  decode.success(Doctor(id:, first_name:, last_name:))
+  decode.success(Doctor(id:, academic_title:, first_name:, last_name:))
 }
 
 fn doctor_root_decoder() -> decode.Decoder(DoctorRoot) {
@@ -146,6 +177,67 @@ fn search_visit_root_decoder() -> decode.Decoder(SearchVisitRoot) {
     terms_for_service_decoder(),
   )
   decode.success(SearchVisitRoot(terms_for_service:))
+}
+
+fn valuation_decoder() -> decode.Decoder(Valuation) {
+  use payer_id <- decode.field("payerId", decode.int)
+  use contract_id <- decode.field("contractId", decode.int)
+  use product_in_contract_id <- decode.field("productInContractId", decode.int)
+  use product_id <- decode.field("productId", decode.int)
+  use product_element_id <- decode.field("productElementId", decode.int)
+  use require_referral_for_pp <- decode.field(
+    "requireReferralForPP",
+    decode.bool,
+  )
+  use valuation_type <- decode.field("valuationType", decode.int)
+  use price <- decode.field("price", decode.float)
+  use is_referral_required <- decode.field("isReferralRequired", decode.bool)
+  use is_external_referral_allowed <- decode.field(
+    "isExternalReferralAllowed",
+    decode.bool,
+  )
+  decode.success(Valuation(
+    payer_id:,
+    contract_id:,
+    product_in_contract_id:,
+    product_id:,
+    product_element_id:,
+    require_referral_for_pp:,
+    valuation_type:,
+    price:,
+    is_referral_required:,
+    is_external_referral_allowed:,
+  ))
+}
+
+fn lock_term_inner_decoder() -> decode.Decoder(LockTermResponse) {
+  use temporary_reservation_id <- decode.field(
+    "temporaryReservationId",
+    decode.int,
+  )
+  use valuations <- decode.field("valuations", decode.list(valuation_decoder()))
+  decode.success(LockTermResponse(temporary_reservation_id:, valuations:))
+}
+
+fn lock_term_response_decoder() -> decode.Decoder(LockTermResponse) {
+  use response <- decode.field("value", lock_term_inner_decoder())
+  decode.success(response)
+}
+
+fn encode_valuation(v: Valuation) -> json.Json {
+  json.object([
+    #("payerId", json.int(v.payer_id)),
+    #("contractId", json.int(v.contract_id)),
+    #("productInContractId", json.int(v.product_in_contract_id)),
+    #("productId", json.int(v.product_id)),
+    #("productElementId", json.int(v.product_element_id)),
+    #("requireReferralForPP", json.bool(v.require_referral_for_pp)),
+    #("valuationType", json.int(v.valuation_type)),
+    #("price", json.float(v.price)),
+    #("isReferralRequired", json.bool(v.is_referral_required)),
+    #("isExternalReferralAllowed", json.bool(v.is_external_referral_allowed)),
+    #("alternativePrice", json.null()),
+  ])
 }
 
 fn extract_cookies(resp: Response(String)) -> List(String) {
@@ -443,4 +535,114 @@ pub fn search_for_visits(
   doctor_id doctor_id: Option(Int),
 ) -> Result(List(TermForDay), LuxmedApiError) {
   search_for_visits_in_range(client, variant, date_from, date_to, doctor_id)
+}
+
+pub fn lock_term(
+  client client: LuxmedClient,
+  variant variant: ServiceVariant,
+  term term: Term,
+  correlation_id correlation_id: String,
+) -> Result(LockTermResponse, LuxmedApiError) {
+  let doctor_obj =
+    json.object([
+      #("id", json.int(term.doctor.id)),
+      #(
+        "academicTitle",
+        json.string(option.unwrap(term.doctor.academic_title, "")),
+      ),
+      #("firstName", json.string(option.unwrap(term.doctor.first_name, ""))),
+      #("lastName", json.string(option.unwrap(term.doctor.last_name, ""))),
+    ])
+
+  let body =
+    json.object([
+      #("serviceVariantId", json.int(variant.id)),
+      #("serviceVariantName", json.string(variant.name)),
+      #("facilityId", json.int(term.clinic_id)),
+      #("facilityName", json.string(term.clinic)),
+      #("roomId", json.int(term.room_id)),
+      #("scheduleId", json.int(term.schedule_id)),
+      #("date", json.string(term.date_time_from)),
+      #("timeFrom", json.string(extract_time(term.date_time_from))),
+      #("timeTo", json.string(extract_time(term.date_time_to))),
+      #("doctorId", json.int(term.doctor.id)),
+      #("doctor", doctor_obj),
+      #("isAdditional", json.bool(False)),
+      #("isImpediment", json.bool(False)),
+      #("impedimentText", json.string("")),
+      #("isPreparationRequired", json.bool(False)),
+      #("preparationItems", json.preprocessed_array([])),
+      #("referralId", json.null()),
+      #("eReferralId", json.null()),
+      #("referralTypeId", json.null()),
+      #("parentReservationId", json.null()),
+      #("correlationId", json.string(correlation_id)),
+      #("isTelemedicine", json.bool(False)),
+      #("isPoz", json.bool(False)),
+      #("isRehabilitation", json.bool(False)),
+      #("isOnWhiteList", json.bool(False)),
+      #("rehabilitationTermContext", json.null()),
+      #("isVideoConsultation", json.bool(False)),
+    ])
+    |> json.to_string
+
+  use resp <- result.try(post_json(
+    client,
+    "/PatientPortal/NewPortal/Reservation/LockTerm",
+    body,
+  ))
+  case resp.status {
+    s if s >= 200 && s < 300 ->
+      json.parse(resp.body, lock_term_response_decoder())
+      |> result.map_error(fn(_) {
+        ParseError("Failed to parse LockTerm response: " <> resp.body)
+      })
+    s ->
+      Error(RequestFailed(
+        "LockTerm returned " <> int.to_string(s) <> ": " <> resp.body,
+      ))
+  }
+}
+
+pub fn confirm_reservation(
+  client client: LuxmedClient,
+  variant variant: ServiceVariant,
+  term term: Term,
+  lock_response lock_response: LockTermResponse,
+) -> Result(Response(String), LuxmedApiError) {
+  use valuation <- result.try(
+    list.first(lock_response.valuations)
+    |> result.replace_error(NotFound("Valuation in LockTerm response")),
+  )
+
+  let body =
+    json.object([
+      #("serviceVariantId", json.int(variant.id)),
+      #("doctorId", json.int(term.doctor.id)),
+      #("facilityId", json.int(term.clinic_id)),
+      #("roomId", json.int(term.room_id)),
+      #(
+        "temporaryReservationId",
+        json.int(lock_response.temporary_reservation_id),
+      ),
+      #("referralId", json.null()),
+      #("eReferralId", json.null()),
+      #("date", json.string(term.date_time_from)),
+      #("timeFrom", json.string(extract_time(term.date_time_from))),
+      #("parentReservationId", json.null()),
+      #("referralRequired", json.bool(valuation.require_referral_for_pp)),
+      #("valuationId", json.null()),
+      #("scheduleId", json.int(term.schedule_id)),
+      #("valuation", encode_valuation(valuation)),
+    ])
+    |> json.to_string
+
+  post_json(client, "/PatientPortal/NewPortal/Reservation/Confirm", body)
+}
+
+fn extract_time(iso: String) -> String {
+  case string.split(iso, "T") {
+    [_, rest] -> string.slice(rest, 0, 5)
+    _ -> ""
+  }
 }

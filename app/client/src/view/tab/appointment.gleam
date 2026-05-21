@@ -9,7 +9,7 @@ import lustre/event.{on_click, on_input, on_submit}
 import routing.{ActiveSearches, CreateSearch}
 import shared/charon.{
   type CreateAppointmentRequest, type SearchStatusDisplay, type SearchSummary,
-  Completed, NoResult, Processing,
+  AwaitingConfirmation, Booked, Completed, NoResult, Processing,
 }
 import ui_types.{
   type FormField, type Model, type Msg, AppointmentForm, DoctorFirstName,
@@ -198,6 +198,24 @@ fn view_status_badge(status: SearchStatusDisplay) -> Element(Msg) {
           ),
         ],
         [text("Found " <> int.to_string(list.length(terms)) <> " terms")],
+      )
+    Booked(_, booking) ->
+      span(
+        [
+          class(
+            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-pine text-surface",
+          ),
+        ],
+        [text("Booked: " <> booking.date_time)],
+      )
+    AwaitingConfirmation(_, candidate) ->
+      span(
+        [
+          class(
+            "inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full bg-overlay text-gold",
+          ),
+        ],
+        [text("Awaiting confirmation: " <> candidate.date_time_from)],
       )
   }
 }

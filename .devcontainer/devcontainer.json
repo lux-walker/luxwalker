@@ -17,7 +17,7 @@
       }
     }
   },
-  "forwardPorts": [8000],
+  "forwardPorts": [1234, 8080, 8000],
   "postCreateCommand": "sudo chown -R developer:developer /home/developer/.config && mkdir -p /home/developer/.config/git && gleam --version && claude --version && gh --version",
   "mounts": [
     "source=luxwalker-user-config,target=/home/developer/.config,type=volume"

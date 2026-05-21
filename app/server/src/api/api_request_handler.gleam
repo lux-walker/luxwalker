@@ -7,6 +7,7 @@ import gleam/dict
 import gleam/http.{Get, Post}
 import gleam/http/request
 import gleam/json
+import handlers/reserve_handler
 import handlers/search_handler
 import shared/charon
 import utils/httpx
@@ -44,6 +45,8 @@ fn handle_request_context_oriented(
     Get, ["walker"] -> handle_walker_get_for_user(ctx, request_context)
     Post, ["walker", id, "rerun"] ->
       handle_walker_rerun_for_user(ctx, request_context, id)
+    Post, ["walker", id, "reserve"] ->
+      handle_walker_reserve_for_user(ctx, request_context, id)
     _, _ -> wisp.not_found()
   }
 }
@@ -102,17 +105,26 @@ fn handle_walker_post_for_user(
   let actor_result = search_actor.create_and_call(ctx, id, request)
 
   let response = case actor_result {
-    Ok(search_actor.SearchComplete(result)) ->
+    Ok(search_actor.SearchComplete(result, booking)) ->
       charon.CreateAppointmentResponse(
         status: charon.ResponseCompleted,
         id: id,
         message: result,
+        booking: booking,
+      )
+    Ok(search_actor.SearchFailed(reason)) ->
+      charon.CreateAppointmentResponse(
+        status: charon.ResponseFailed(reason),
+        id: id,
+        message: reason,
+        booking: charon.BookingNone,
       )
     Error(_subject) ->
       charon.CreateAppointmentResponse(
         status: charon.ResponseProcessing,
         id: id,
         message: "Search is being processed in the background",
+        booking: charon.BookingNone,
       )
   }
 
@@ -165,6 +177,89 @@ fn handle_walker_rerun_for_user(
         #("status", json.string("processing")),
         #("id", json.string(new_id)),
       ])
+    }
+  }
+}
+
+fn handle_walker_reserve_for_user(
+  ctx: AppContext,
+  request_context: RequestAppContext,
+  id: String,
+) -> wisp.Response {
+  use details <- httpx.try_result(
+    search_registry.get_request_details(
+      ctx.actors.search_registry,
+      id,
+      5000,
+    ),
+    wisp.not_found,
+  )
+
+  case details.record.user_email == request_context.user_email {
+    False -> {
+      log.warn(request_context.logger, "walker_reserve_unauthorized", [
+        #("search_id", id),
+      ])
+      httpx.as_json([#("error", json.string("Not authorized"))], 403)
+    }
+    True -> {
+      case details.record.status {
+        search_registry.AwaitingConfirmation(terms, candidate) -> {
+          log.info(request_context.logger, "walker_reserve_start", [
+            #("search_id", id),
+            #("date", candidate.date_time_from),
+          ])
+          let outcome =
+            reserve_handler.reserve(
+              request_context.logger,
+              details.record.user_email,
+              details.credentials.password,
+              candidate,
+            )
+          let response = case outcome {
+            reserve_handler.Reserved(booking) -> {
+              search_registry.request_booked(
+                ctx.actors.search_registry,
+                id,
+                terms,
+                booking,
+              )
+              charon.CreateAppointmentResponse(
+                status: charon.ResponseCompleted,
+                id: id,
+                message: "Reservation confirmed",
+                booking: charon.BookingCreated(
+                  clinic: booking.clinic,
+                  date_time: booking.date_time,
+                  doctor: booking.doctor,
+                ),
+              )
+            }
+            reserve_handler.ReserveFailed(reason) ->
+              charon.CreateAppointmentResponse(
+                status: charon.ResponseFailed(reason),
+                id: id,
+                message: reason,
+                booking: charon.BookingNone,
+              )
+          }
+          let json =
+            response
+            |> charon.encode_create_appointment_response()
+            |> json.to_string()
+          wisp.ok() |> wisp.json_body(json)
+        }
+        _ ->
+          httpx.as_json(
+            [
+              #(
+                "error",
+                json.string("Search is not awaiting confirmation"),
+              ),
+            ],
+            status: 409,
+          )
+      }
     }
   }
 }
